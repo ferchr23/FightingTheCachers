@@ -13,7 +13,7 @@ from typing import Optional
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 
-# content
+# ------------------- content -------------------
 INTRO = [
     ("intro question 1",
      "something "
@@ -81,13 +81,21 @@ def placeholder_question(n):
 NUM_ASSESSMENT_QUESTIONS = 10
 ASSESSMENT = [placeholder_question(n) for n in range(1, NUM_ASSESSMENT_QUESTIONS + 1)]
 
-# game rules
+# ------------------- game rules --------------------
 DECISIONS = ["sbox", "ttable", "masking", "hw"]
+
+# Performance parameters and their sources (for the simulation, not real numbers):
 BASE_DELAY = 2.0          # seconds per message for the slowest implementation
-SBOX_SPEEDUP = 0.25       # table lookup instead of computing SubBytes
-TTABLE_SPEEDUP = 0.30     # merged round tables instead of separate steps
-MASKING_OVERHEAD = 0.30   # boolean masking cost
-HW_FACTOR = 0.25          # dedicated AES instructions multiply remaining time
+
+SBOX_SPEEDUP = 10       # table lookup instead of computing SubBytes 
+# (https://scispace.com/pdf/timing-attack-on-a-modified-dynamic-s-box-implementation-of-5dpgjkgbhx.pdf) Found that S-box lookup is 10 times faster than computing SubBytes
+TTABLE_SPEEDUP = 0.25     # merged round tables instead of separate steps
+# (https://rd.springer.com/content/pdf/10.1007/11552055_2.pdf) Found that best case T-tables decrease cycle count from 1600 to 1200, for 25% speedup
+MASKING_OVERHEAD = 9.37   # boolean masking cost
+# (https://link.springer.com/content/pdf/10.1007/978-3-540-72738-5_10.pdf) Assuming just masking to S-box lookups, with strong randomization for strongests masking security, best case overhead is increasing from 1637 cycles to 15,332 cycles, for 9.37 times more cycles
+HW_SPEEDUP = 0.829          # dedicated AES instructions multiply remaining time
+# (https://www.intel.com/content/dam/develop/external/us/en/documents/10tb24-breakthrough-aes-performance-with-intel-aes-new-instructions-final-secure-165683.pdf) showed off AES-NI, which reduced the cycle count to ~1.3 cycles/byte, compared to a baseline (https://eprint.iacr.org/2009/129.pdf) of 7.59 cycles/byte for AES-128, this is a 82.9% speedup
+
 TRACES_SBOX = 2_000       # traces to recover key: S-box only
 TRACES_TTABLE = 500       # traces to recover key: T-tables
 MASKING_MULTIPLIER = 200  # masking makes the attack this many times harder
@@ -111,14 +119,14 @@ def skipped_decisions(choices):
 def per_message_delay(choices):
     f = 1.0
     if choices.get("sbox"):
-        f -= SBOX_SPEEDUP
+        f /= SBOX_SPEEDUP
     if choices.get("ttable"):
-        f -= TTABLE_SPEEDUP
+        f *= (1 - TTABLE_SPEEDUP)
     if choices.get("masking"):
-        f += MASKING_OVERHEAD
+        f *= MASKING_OVERHEAD
     f = max(f, 0.2)
     if choices.get("hw"):
-        f *= HW_FACTOR
+        f *= (1 - HW_SPEEDUP)
     return max(BASE_DELAY * f, 0.2)
 
 def traces_needed(choices):
@@ -147,7 +155,7 @@ class GameState:
     assessment_score: int = 0
     assessment_total: int = 0
 
-# aes engine
+# ------------------- aes engine ---------------------
 MESSAGES = ["HELLO WORLD", "MEET AT NOON", "SEND MORE CASH", "ATTACK AT DAWN", "PASSWORD IS 1234"]
 
 def make_key(text):
@@ -157,7 +165,7 @@ def make_key(text):
 def encrypt(key, message):
     return AES.new(key, AES.MODE_ECB).encrypt(pad(message.encode(), 16))
 
-# ui helpers
+# ------------------- ui helpers ---------------------
 WRAP = 780
 
 class Screen(ttk.Frame):
@@ -248,7 +256,7 @@ class QuizFrame(ttk.Frame):
         else:
             self.show()
 
-# screens
+# ------------------- ui screens -------------------
 class IntroScreen(Screen):
     def __init__(self, app):
         super().__init__(app, "Welcome to the AES Implementation Lab")
@@ -487,7 +495,7 @@ class AssessmentScreen(Screen):
         self.add_button("Quit", self.app.destroy)
         self.add_button("Play again", self.app.restart)
 
-# app
+#  -------------------- app --------------------
 class App(tk.Tk):
     FLOW = [IntroScreen, DesignScreen, PredictScreen, PerformanceScreen, AttackScreen,
             ResultsScreen, AssessmentScreen]
