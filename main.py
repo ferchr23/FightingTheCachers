@@ -85,7 +85,7 @@ ASSESSMENT = [placeholder_question(n) for n in range(1, NUM_ASSESSMENT_QUESTIONS
 DECISIONS = ["sbox", "ttable", "masking", "hw"]
 
 # Performance parameters and their sources (for the simulation, not real numbers):
-BASE_DELAY = 2.0          # seconds per message for the slowest implementation
+BASE_DELAY = 10          # seconds per message for the slowest implementation
 
 SBOX_SPEEDUP = 10       # table lookup instead of computing SubBytes 
 # (https://scispace.com/pdf/timing-attack-on-a-modified-dynamic-s-box-implementation-of-5dpgjkgbhx.pdf) Found that S-box lookup is 10 times faster than computing SubBytes
@@ -117,7 +117,7 @@ def skipped_decisions(choices):
     return [d for d in DECISIONS if d not in choices and not is_available(d, choices)]
 
 def per_message_delay(choices):
-    f = 1.0
+    f = BASE_DELAY
     if choices.get("sbox"):
         f /= SBOX_SPEEDUP
     if choices.get("ttable"):
@@ -127,7 +127,7 @@ def per_message_delay(choices):
     f = max(f, 0.2)
     if choices.get("hw"):
         f *= (1 - HW_SPEEDUP)
-    return max(BASE_DELAY * f, 0.2)
+    return max(f, 0.1)
 
 def traces_needed(choices):
     """Traces to recover the key, or None if no practical cache attack exists."""
@@ -388,7 +388,7 @@ class PerformanceScreen(Screen):
 
     def begin_message(self):
         if self.idx >= len(MESSAGES):
-            self.result.config(text=f"Total encryption time: {self.game.total_time:.1f} s")
+            self.result.config(text=f"Total encryption time: {self.delay:.1f} s")
             self.canvas.itemconfig(self.box_text, text="Done")
             self.next_btn.state(["!disabled"])
             return
