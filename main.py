@@ -96,10 +96,12 @@ MASKING_OVERHEAD = 9.37   # boolean masking cost
 HW_SPEEDUP = 0.829          # dedicated AES instructions multiply remaining time
 # (https://www.intel.com/content/dam/develop/external/us/en/documents/10tb24-breakthrough-aes-performance-with-intel-aes-new-instructions-final-secure-165683.pdf) showed off AES-NI, which reduced the cycle count to ~1.3 cycles/byte, compared to a baseline (https://eprint.iacr.org/2009/129.pdf) of 7.59 cycles/byte for AES-128, this is a 82.9% speedup
 
-TRACES_SBOX = 2_000       # traces to recover key: S-box only
-TRACES_TTABLE = 500       # traces to recover key: T-tables
-MASKING_MULTIPLIER = 200  # masking makes the attack this many times harder
-NO_ATTACK_CAP = 100_000   # traces the simulated attacker tries before giving up
+TRACES_SBOX = 2**13*3386       # traces to recover key: S-box only, assuming 1024 Byte tables
+# (https://eprint.iacr.org/2005/271.pdf) found that reducing look ups to just S-boxes (no T-tables) with 1024 Byte tables, increased the number of traces needed by 3386 times
+TRACES_TTABLE = 2**13       # traces to recover key: T-tables
+# (https://www.iacr.org/archive/ches2006/16/16.pdf) in the remote timing attack on AES-128, using collisions within one encryption and targets the final round of encryption, taking worst case, 2^13 traces
+MASKING_MULTIPLIER = 200  # masking makes the attack this many times harder - still need a justifcation for this number
+NO_ATTACK_CAP = 100_000_000   # traces the simulated attacker tries before giving up
 
 def is_available(decision, choices):
     """T-tables build on S-box tables; masking protects table lookups."""
