@@ -8,6 +8,7 @@ Run with:  python main.py
 """
 import tkinter as tk
 from dataclasses import dataclass, field
+from pathlib import Path #added by copilot to make it scrollable
 from tkinter import ttk
 from typing import Optional
 from Crypto.Cipher import AES
@@ -15,45 +16,58 @@ from Crypto.Util.Padding import pad
 
 # ------------------- content -------------------
 INTRO = [
-    ("intro question 1",
-     "something "
-     "something"),
-    ("intro question 2",
-     "something "
-     "something"),
-    ("intro question 3",
-     "something "
-     "something "
-     "something"),
-    ("intro question 4",
-     "something "
-     "something"),
+    ("Welcome to Fighting the Cachers!", 
+    "On their own, encryption schemes like AES are nothing more than theoretical algorithms. For them to encrypt electronic messages, they must be implemented, either in software or in hardware. In this game, your goal is to implement the AES encryption algorithm in a way that is performant and secure against cache leakages.", 
+    "What is AES?", 
+    "AES, or the Advanced Encryption Standard, is the National Institute of Standards and Technology’s symmetric key encryption algorithm of choice for encrypting electronic data. AES is used by two parties who share a single secret key to encrypt and decrypt messages. AES takes blocks of data and encrypts them with a secret key, using confusion to obscure the relationship between the key/message and resulting ciphertext, as well as using diffusion to spread the influence of the message across the ciphertext."
+    ),
+    ("What does AES do?",
+     "As an algorithm, AES has 4 major steps:",
+     "-  a nonlinear function SubBytes",
+     "-  a rearranging of message bytes in ShiftRows", 
+     "-  a linear matrix multiplication in MixColumns", 
+     "-  and the application of the secret key in AddRoundKey.",
+     "These 4 steps make up a “Round” of AES, with many rounds being performed in series to encrypt a single block of the message. The number of rounds used depends on the length of your secret key. For example, AES-128 uses a 128-bit secret key and has 10 rounds, while AES-256 uses a 256-bit secret key and has 14 rounds.",
+    "When we talk about the AES algorithm, it is defined by these 4 steps and ways they come together in a series of rounds. Any implementation of AES in code or in hardware will all perform these steps. How they perform these steps is where implementations come into their own."
+    ),
+    ("What is the performance of an AES implementation?",
+     "When we discuss the performance of an AES implementation here, we are referring to the time required to encrypt messages. Implementations with higher performance will compute the steps in AES faster than those with a lower performance.",
+     "What are cache timing leakages?",
+     "To speed up the reading of data from memory, computers make use of caches. Caches temporarily store data that has been accessed recently, such that, if the data is needed again the processor can read it from the cache instead of a slower memory component. If the required data can be found in a cache, it is called a “cache hit,” while if the data cannot be found in the cache, it is called a “cache miss.” By nature, cache hits are faster memory accesses than cache misses.",
+
+     "Adversaries to a computer system can use cache hits and cache misses to learn what data has been stored in the cache recently. They can record the time required to run a program, such as AES, to determine if a cache hit or cache miss occurred. These “cache timing leakages” can allow an adversary to learn the access patterns of lookup tables.",
+     
+     ),
+    ("The role of lookup tables",
+    "In AES, lookup tables are often used to speed up computation. This increases the risk of cache timing leakages. The amount of information revealed through cache timing leakages can be reduced, but it often comes with a tradeoff and is entirely dependent on how AES has been implemented.",
+    "It is your task now to investigate those tradeoffs. You will now design an AES implementation that is both performant and resistant to cache timing leakages."
+     ),
 ]
 
 DECISION_INFO = {
     "sbox": {
-        "title": "Decision 1: placeholder_decision_title_1",
-        "prompt": "placeholder_decision_prompt_1",
-        True: ("placeholder_option_name_1", "placeholder_option_description_1"),
-        False: ("placeholder_option_name_2", "placeholder_option_description_2"),
+        "title": "Decision 1: 'Sub' me in coach!",
+        "prompt": "Determine how your system handles the SubBytes operation. Choose carefully...",
+        True: ("Use S-boxes for SubBytes", "Pre-compute the non-linear substitutions applied in SubBytes when setting up AES. The substitutions are stored as a lookup table in memory. This lookup table, called an S-box, is 256 bytes in size and can fit into 4 lines of the cache. Which value is accessed in the S-box depends on the input value, which is a combination of the secret round key with either the plaintext message or the output of a previous round."),
+        False: ("Compute SubBytes Manually", "The substitutions applied in SubBytes can be numerically computed as an inversion in a Galois Field. Compared to the simpler computations in ShiftRows, MixColumns, and AddRoundKey, the inverse over a Galois Field is the most complicated part of an AES round."),
     },
     "ttable": {
-        "title": "Decision 2: placeholder_decision_title_2",
-        "prompt": "placeholder_decision_prompt_2",
-        True: ("placeholder_option_name_3", "placeholder_option_description_3"),
-        False: ("placeholder_option_name_4", "placeholder_option_description_4"),
+        "title": "Decision 2: To T or not to T...",
+        "prompt": "Will you choose to use T-tables or stick with the traditional route?",
+        True: ("Use T-tables for Each Round", "Similar to how S-boxes precompute the substitutions in SubBytes, T-tables precompute the computation of most of an entire round of AES. SubBytes, ShiftRows, and MixColumns are replaced with a memory table lookup, leaving only AddRoundKey to be performed in real time. Just as in S-boxes, the accessed value of the T-table lookup depends on the round key and either the plaintext message or the output of the previous round. To include the computation of ShiftRows and MixColumns, each T-table is 4 times the size of an S-box. This means they take up 16 lines on a cache instead of an S-box’s 4 lines."),
+        False: ("Perform Rounds Normally", "On the fly in each round, perform the logical computations to implement ShiftRows and MixColumns. ShiftRows is a simple reordering of bytes, and MixColumns is a matrix multiplication with a fixed array."),
     },
     "masking": {
-        "title": "Decision 3: placeholder_decision_title_3",
-        "prompt": "placeholder_decision_prompt_3",
-        True: ("placeholder_option_name_5", "placeholder_option_description_5"),
-        False: ("placeholder_option_name_6", "placeholder_option_description_6"),
+        "title": "Decision 3: Mask off, hold up Mask on?",
+        "prompt": "Is masking what you need, or is it better to keep things the same? You decide.",
+        True: ("Use Boolean Masking for Memory Accesses", "Boolean Masking was originally created as a power-analysis countermeasure. Every intermediate value in AES is XORed with a random mask. All lookup tables are recomputed based on the mask, and any single lookup is uniformly random. This does not necessarily prevent cache attacks, but does work to obfuscate the absolute index of lookups. Applying a mask requires pseudorandom values to be generated and each lookup table to be recomputed, adding computation. It is possible to reuse masks for multiple lookups to reduce the computation, however this prevents the lookups from being uniformly random."),
+        False: ("Perform Memory Accesses as Usual", "All accesses to data in the cache are performed normally, with no masking."),
     },
     "hw": {
-        "title": "Decision 4: placeholder_decision_title_4",
-        "prompt": "placeholder_decision_prompt_4",
-        True: ("placeholder_option_name_7", "placeholder_option_description_7"),
-        False: ("placeholder_option_name_8", "placeholder_option_description_8"),
+        "title": "Decision 4: Chip decisions but not talking about Doritos vs Lays",
+        "prompt": "They finally released that fancy new chip, I hope your computer can handle it...",
+        True: ("Use a Special Instruction Chip", "Use a specialized chip that has been designed to execute AES efficiently. Examples include AES-NI from Intel and ARM Crypto. Each comes with dedicated instructions to execute AES round operations efficiently. Each of the round operations are implemented directly in hardware, rather than using general purpose arithmetic logic and instructions."),
+        False: ("Use a Standard Processor", "Use a general purpose processor to run your AES implementation. Some operations required in AES like XOR, shifting, and data movement are handled by existing logic and instructions. Other operations, like the Galois Field arithmetic of SubBytes and MixColumns are not commonly used by ALUs and must be implemented as a combination of smaller instructions. Using more instructions generally increases the runtime of a program."),
     },
 }
 
@@ -72,14 +86,84 @@ EFFECTS = {
 # QUESTION PLACEHOLDERS: replace with real questions
 # Each question: dict(q=text, options=[...], answer=index of correct option, explanation=text)
 def placeholder_question(n):
-    return dict(q=f"question {n} placeholder",
-                options=[f"answer {k} placeholder" for k in range(1, 5)],
-                answer=0, explanation="explanation placeholder")
-
+    return dict(q="Implementing SubBytes with S-box lookup tables will most likely…",
+                options=["Improve performance, but potentially expose secret-dependent memory accesses to cache attacks.", " Reduce performance and automatically prevent cache attacks", "Improve performance and eliminate all implementation-level vulnerabilities.", "Change the mathematical operations that define AES."],
+                answer=0, explanation="Lookup tables can speed up SubBytes, but the accessed location can depend on secret-related intermediate values. Cache observations may reveal information about those accesses.")
+dict(q="If you compute the SubBytes transformation mathematically instead of using an S-box lookup table, what is the most likely tradeoff?",
+                options=["Higher performance because all mathematical operations are faster than memory accesses.", " Potentially more computation, but less reliance on secret-dependent table accesses.", "No change in performance or cache behavior because AES is unchanged.", "Guaranteed immunity to every cache attack, regardless of how the computation is implemented."],
+                answer=1, explanation="Computing the finite-field transformation can require more instructions than a table lookup. It can avoid the particular leakage mechanism caused by secret-dependent table accesses, provided the computation itself is implemented appropriately. Arithmetic alone does not guarantee constant-time execution.")
+dict(q="Compared with an S-box lookup implementation, using T-tables to combine several AES round operations will most likely…",
+                options=["Require fewer table lookups, use less cache space, and eliminate cache leakage.", " Replace the entire AES algorithm with a different encryption algorithm.", "Potentially speed up round processing, but use larger tables and expose more cache locations to secret-dependent accesses.", "Make AES slower while guaranteeing that every memory access is independent of the secret key."],
+                answer=2, explanation="T-tables combine work from multiple AES transformations, potentially reducing instruction overhead. However, they occupy more cache space than S-box tables and still use secret-dependent lookups, which can create cache leakage.")
+dict(q="If you perform ShiftRows and MixColumns as separate operations instead of combining them into T-tables, what should you expect?",
+                options=["More explicit computation, but less reliance on large T-table lookups.", "Guaranteed faster execution and complete protection against cache attacks.", " Elimination of all memory accesses during AES encryption.", "A change to AES's underlying encryption algorithm."],
+                answer=0, explanation=" Performing the transformations requires more instructions than using T-tables. It avoids the large combined tables, but it does not necessarily eliminate cache leakage if the implementation still uses an S-box lookup table.")
+dict(q="What is a likely tradeoff when you use Boolean masking for lookup-table accesses?",
+                options=["It makes every AES operation faster without requiring additional computation.", "It makes the AES key longer and therefore harder to guess.", "It can make lookup patterns harder to interpret, but generating masks and adapting tables adds computation.", "It guarantees that the attacker can never learn anything from the cache."],
+                answer=2, explanation="Boolean masking uses random values to obscure intermediate AES values and adapt lookup tables. This can make the relationship between secret values and observed lookup patterns harder to interpret. However, generating masks and adapting tables adds computational overhead.")
+dict(q="If lookup-table accesses are performed normally, without masking, what opportunity might this give an attacker?",
+                options=["The attacker can automatically read every encrypted message as plaintext.", "The attacker can use cache timing differences to investigate which lookup-table locations were accessed.", "The attacker can make AES skip its AddRoundKey operation.", "The attacker can prevent the processor from using its cache."],
+                answer=1, explanation="When lookup-table accesses are performed normally, their locations may depend on secret-related values. Because cache hits and misses take different amounts of time, an attacker may measure timing differences to infer which table locations were accessed. These observations can reveal information, but do not automatically expose the plaintext or the entire secret key.")
+dict(q="What is a likely advantage of using specialized AES instructions, such as AES-NI or ARM Crypto extensions?",
+                options=["They change AES into a stronger encryption algorithm.", "They guarantee protection against every possible attack.", "They allow AES to run without any processor hardware.", "They can execute AES operations efficiently using dedicated hardware, reducing the work required from ordinary software instructions."],
+                answer=3, explanation="Specialized instructions such as AES-NI and ARM Crypto extensions allow compatible processors to perform AES operations using dedicated hardware. This can reduce the number of ordinary software instructions needed and improve encryption performance. These instructions can also avoid the classic cache-leakage mechanism associated with secret-dependent software lookup tables, but they do not eliminate every possible vulnerability.")
+dict(q="What is a likely consequence of implementing AES on a standard processor without dedicated AES instructions?",
+                options=["AES cannot be implemented correctly on that processor.", "AES may require more ordinary instructions to perform its operations, increasing the time needed to encrypt messages.", "AES automatically becomes resistant to cache timing attacks.", "AES no longer needs to perform SubBytes, ShiftRows, MixColumns, or AddRoundKey."],
+                answer=1, explanation="Without dedicated AES instructions, a general-purpose processor may need to execute multiple ordinary instructions to perform AES operations such as SubBytes and MixColumns. This can increase encryption time compared with hardware-accelerated AES. The processor can still implement AES correctly, and its vulnerability to cache attacks depends on the implementation—for example, whether it uses secret-dependent lookup tables.")
+dict(q="Why can two systems use the same AES algorithm but have different encryption performance?",
+                options=["Each system uses a different mathematical encryption algorithm, even if both are called AES.", "Different implementations can perform AES operations differently, such as using lookup tables, ordinary processor instructions, or specialized AES hardware.", "A system that encrypts messages more slowly must use a longer AES key.", "The AES algorithm automatically changes its number of operations depending on how fast the processor is."],
+                answer=1, explanation="AES defines the encryption operations, but implementations can execute those operations in different ways. Lookup tables and specialized processor instructions can improve performance, while computing operations using ordinary instructions may require more work.")
+dict(q="Why can an AES implementation that uses lookup tables be vulnerable to cache timing attacks?",
+                options=["Lookup tables store the secret key in plaintext, allowing an attacker to read it directly.", "Lookup tables cause AES to skip some encryption rounds, making the ciphertext easier to decrypt.", "The locations accessed in a lookup table can depend on secret-related values, and those accesses can affect observable cache timing.", "Lookup tables prevent the processor from using its cache efficiently, making all memory accesses slower."],
+                answer=2, explanation="The memory locations accessed during AES may depend on intermediate values involving the secret key. Because cache hits and misses take different amounts of time, an attacker may use timing observations to infer information about the lookup patterns and potentially the key.")
+dict(q="How can an attacker use differences between cache hits and cache misses to learn information about an AES computation?",
+                options=["By measuring execution times and using timing differences to infer which memory locations were accessed.", "By reading every value stored in the processor's cache without interacting with the system.", "By making cache misses change the mathematical operations performed by AES.", "By forcing AES to encrypt messages without using its secret key."],
+                answer=0, explanation="Cache hits are generally faster than cache misses. By measuring timing differences across repeated operations, an attacker may infer memory access patterns and learn information about secret-dependent computations. This does not automatically reveal the entire secret key or plaintext.")
 # Prediction phase: one question per decision the student made (numbered in order shown).
 # To write real ones, build them in PredictScreen from the student's choice (see that class).
 NUM_ASSESSMENT_QUESTIONS = 10
 ASSESSMENT = [placeholder_question(n) for n in range(1, NUM_ASSESSMENT_QUESTIONS + 1)]
+
+# Questions are selected by the implementation decision and the player's choice.
+PREDICTION_QUESTIONS = {
+    ("sbox", True): dict(q="Implementing SubBytes with S-box lookup tables will most likely…",
+        options=["Improve performance, but potentially expose secret-dependent memory accesses to cache attacks.", " Reduce performance and automatically prevent cache attacks", "Improve performance and eliminate all implementation-level vulnerabilities.", "Change the mathematical operations that define AES."],
+        answer=0, explanation="Lookup tables can speed up SubBytes, but the accessed location can depend on secret-related intermediate values. Cache observations may reveal information about those accesses."),
+    ("sbox", False): dict(q="If you compute the SubBytes transformation mathematically instead of using an S-box lookup table, what is the most likely tradeoff?",
+        options=["Higher performance because all mathematical operations are faster than memory accesses.", " Potentially more computation, but less reliance on secret-dependent table accesses.", "No change in performance or cache behavior because AES is unchanged.", "Guaranteed immunity to every cache attack, regardless of how the computation is implemented."],
+        answer=1, explanation="Computing the finite-field transformation can require more instructions than a table lookup. It can avoid the particular leakage mechanism caused by secret-dependent table accesses, provided the computation itself is implemented appropriately. Arithmetic alone does not guarantee constant-time execution."),
+    ("ttable", True): dict(q="Compared with an S-box lookup implementation, using T-tables to combine several AES round operations will most likely…",
+        options=["Require fewer table lookups, use less cache space, and eliminate cache leakage.", " Replace the entire AES algorithm with a different encryption algorithm.", "Potentially speed up round processing, but use larger tables and expose more cache locations to secret-dependent accesses.", "Make AES slower while guaranteeing that every memory access is independent of the secret key."],
+        answer=2, explanation="T-tables combine work from multiple AES transformations, potentially reducing instruction overhead. However, they occupy more cache space than S-box tables and still use secret-dependent lookups, which can create cache leakage."),
+    ("ttable", False): dict(q="If you perform ShiftRows and MixColumns as separate operations instead of combining them into T-tables, what should you expect?",
+        options=["More explicit computation, but less reliance on large T-table lookups.", "Guaranteed faster execution and complete protection against cache attacks.", " Elimination of all memory accesses during AES encryption.", "A change to AES's underlying encryption algorithm."],
+        answer=0, explanation=" Performing the transformations requires more instructions than using T-tables. It avoids the large combined tables, but it does not necessarily eliminate cache leakage if the implementation still uses an S-box lookup table."),
+    ("masking", True): dict(q="What is a likely tradeoff when you use Boolean masking for lookup-table accesses?",
+        options=["It makes every AES operation faster without requiring additional computation.", "It makes the AES key longer and therefore harder to guess.", "It can make lookup patterns harder to interpret, but generating masks and adapting tables adds computation.", "It guarantees that the attacker can never learn anything from the cache."],
+        answer=2, explanation="Boolean masking uses random values to obscure intermediate AES values and adapt lookup tables. This can make the relationship between secret values and observed lookup patterns harder to interpret. However, generating masks and adapting tables adds computational overhead."),
+    ("masking", False): dict(q="If lookup-table accesses are performed normally, without masking, what opportunity might this give an attacker?",
+        options=["The attacker can automatically read every encrypted message as plaintext.", "The attacker can use cache timing differences to investigate which lookup-table locations were accessed.", "The attacker can make AES skip its AddRoundKey operation.", "The attacker can prevent the processor from using its cache."],
+        answer=1, explanation="When lookup-table accesses are performed normally, their locations may depend on secret-related values. Because cache hits and misses take different amounts of time, an attacker may measure timing differences to infer which table locations were accessed. These observations can reveal information, but do not automatically expose the plaintext or the entire secret key."),
+    ("hw", True): dict(q="What is a likely advantage of using specialized AES instructions, such as AES-NI or ARM Crypto extensions?",
+        options=["They change AES into a stronger encryption algorithm.", "They guarantee protection against every possible attack.", "They allow AES to run without any processor hardware.", "They can execute AES operations efficiently using dedicated hardware, reducing the work required from ordinary software instructions."],
+        answer=3, explanation="Specialized instructions such as AES-NI and ARM Crypto extensions allow compatible processors to perform AES operations using dedicated hardware. This can reduce the number of ordinary software instructions needed and improve encryption performance. These instructions can also avoid the classic cache-leakage mechanism associated with secret-dependent software lookup tables, but they do not eliminate every possible vulnerability."),
+    ("hw", False): dict(q="What is a likely consequence of implementing AES on a standard processor without dedicated AES instructions?",
+        options=["AES cannot be implemented correctly on that processor.", "AES may require more ordinary instructions to perform its operations, increasing the time needed to encrypt messages.", "AES automatically becomes resistant to cache timing attacks.", "AES no longer needs to perform SubBytes, ShiftRows, MixColumns, or AddRoundKey."],
+        answer=1, explanation="Without dedicated AES instructions, a general-purpose processor may need to execute multiple ordinary instructions to perform AES operations such as SubBytes and MixColumns. This can increase encryption time compared with hardware-accelerated AES. The processor can still implement AES correctly, and its vulnerability to cache attacks depends on the implementation—for example, whether it uses secret-dependent lookup tables."),
+}
+
+# Three separate questions for the final assessment.
+ASSESSMENT = [
+    dict(q="Why can two systems use the same AES algorithm but have different encryption performance?",
+        options=["Each system uses a different mathematical encryption algorithm, even if both are called AES.", "Different implementations can perform AES operations differently, such as using lookup tables, ordinary processor instructions, or specialized AES hardware.", "A system that encrypts messages more slowly must use a longer AES key.", "The AES algorithm automatically changes its number of operations depending on how fast the processor is."],
+        answer=1, explanation="AES defines the encryption operations, but implementations can execute those operations in different ways. Lookup tables and specialized processor instructions can improve performance, while computing operations using ordinary instructions may require more work."),
+    dict(q="Why can an AES implementation that uses lookup tables be vulnerable to cache timing attacks?",
+        options=["Lookup tables store the secret key in plaintext, allowing an attacker to read it directly.", "Lookup tables cause AES to skip some encryption rounds, making the ciphertext easier to decrypt.", "The locations accessed in a lookup table can depend on secret-related values, and those accesses can affect observable cache timing.", "Lookup tables prevent the processor from using its cache efficiently, making all memory accesses slower."],
+        answer=2, explanation="The memory locations accessed during AES may depend on intermediate values involving the secret key. Because cache hits and misses take different amounts of time, an attacker may use timing observations to infer information about the lookup patterns and potentially the key."),
+    dict(q="How can an attacker use differences between cache hits and cache misses to learn information about an AES computation?",
+        options=["By measuring execution times and using timing differences to infer which memory locations were accessed.", "By reading every value stored in the processor's cache without interacting with the system.", "By making cache misses change the mathematical operations performed by AES.", "By forcing AES to encrypt messages without using its secret key."],
+        answer=0, explanation="Cache hits are generally faster than cache misses. By measuring timing differences across repeated operations, an attacker may infer memory access patterns and learn information about secret-dependent computations. This does not automatically reveal the entire secret key or plaintext."),
+]
 
 # ------------------- game rules --------------------
 DECISIONS = ["sbox", "ttable", "masking", "hw"]
@@ -176,10 +260,42 @@ class Screen(ttk.Frame):
         self.app = app
         self.game = app.game          # NOTE: not "state": Tk already has a .state() method
         ttk.Label(self, text=title, style="Title.TLabel").pack(anchor="w", pady=(0, 12))
-        self.body = ttk.Frame(self)
-        self.body.pack(fill="both", expand=True)
+        #From line 189 to 203 and 207 to 224 added by copilot to make it scrollable.
+        self.body_area = ttk.Frame(self)
+        self.body_area.pack(fill="both", expand=True)
+        self.body_area.columnconfigure(0, weight=1)
+        self.body_area.rowconfigure(0, weight=1)
+        self.body_canvas = tk.Canvas(self.body_area, borderwidth=0, highlightthickness=0)
+        self.body_canvas.grid(row=0, column=0, sticky="nsew")
+        self.body_scrollbar = ttk.Scrollbar(self.body_area, orient="vertical",
+                                            command=self.body_canvas.yview)
+        self.body_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.body_canvas.configure(yscrollcommand=self.body_scrollbar.set)
+        self.body = ttk.Frame(self.body_canvas)
+        self.body_window = self.body_canvas.create_window((0, 0), window=self.body, anchor="nw")
+        self.body.bind("<Configure>", self._update_scroll_region)
+        self.body_canvas.bind("<Configure>", self._resize_body)
+        self.bind_all("<MouseWheel>", self._scroll_body)
         self.footer = ttk.Frame(self)
         self.footer.pack(fill="x", pady=(12, 0))
+
+    def _update_scroll_region(self, _event=None):
+        self.body_canvas.configure(scrollregion=self.body_canvas.bbox("all"))
+
+    def _resize_body(self, event):
+        self.body_canvas.itemconfigure(self.body_window, width=event.width)
+
+    def _scroll_body(self, event):
+        widget = event.widget
+        while widget is not None:
+            if widget == self.body:
+                self.body_canvas.yview_scroll(-int(event.delta / 120), "units")
+                break
+            widget = getattr(widget, "master", None)
+
+    def destroy(self):
+        self.unbind_all("<MouseWheel>")
+        super().destroy()
 
     def add_button(self, text, command, disabled=False):
         b = ttk.Button(self.footer, text=text, command=command)
@@ -267,14 +383,21 @@ class IntroScreen(Screen):
         self.title_lbl.pack(anchor="w", pady=(10, 8))
         self.text_lbl = self.label(self.body, "", font=("Helvetica", 13))
         self.text_lbl.pack(anchor="w")
+        image_path = Path(__file__).parent / "assets" / "aes_rounds_flowchart.png"
+        self.intro_image = tk.PhotoImage(file=image_path).subsample(2, 2)
+        self.image_lbl = ttk.Label(self.body, image=self.intro_image)
         self.next_btn = self.add_button("Next", self.next)
         self.back_btn = self.add_button("Back", self.back)
         self.refresh()
 
     def refresh(self):
-        t, b = INTRO[self.i]
+        t, *body = INTRO[self.i]
         self.title_lbl.config(text=f"{self.i + 1}/{len(INTRO)}  {t}")
-        self.text_lbl.config(text=b)
+        self.text_lbl.config(text="\n\n".join(body))
+        if self.i == 1:
+            self.image_lbl.pack(anchor="w", pady=(12, 0))
+        else:
+            self.image_lbl.pack_forget()
         self.back_btn.state(["!disabled"] if self.i else ["disabled"])
         self.next_btn.config(text="Start designing" if self.i == len(INTRO) - 1 else "Next")
 
@@ -327,10 +450,10 @@ class DesignScreen(Screen):
 class PredictScreen(Screen):
     def __init__(self, app):
         super().__init__(app, "Predict the impact of your choices")
-        made = [d for d in DECISIONS if d in self.game.choices]   # one question per decision made
+        made = [d for d in DECISIONS if d in self.game.choices]
         qs = []
-        for n, d in enumerate(made, start=1):
-            q = placeholder_question(n)   # <- replace with a real question for decision d / choice self.game.choices[d]
+        for d in made:
+            q = PREDICTION_QUESTIONS[(d, self.game.choices[d])].copy()
             q["tag"] = d
             qs.append(q)
         QuizFrame(self.body, qs, self.done).pack(fill="both", expand=True)
@@ -390,7 +513,7 @@ class PerformanceScreen(Screen):
 
     def begin_message(self):
         if self.idx >= len(MESSAGES):
-            self.result.config(text=f"Total encryption time: {self.game.total_time:.1f} s")
+            self.result.config(text=f"Total encryption time: {self.delay:.1f} s")
             self.canvas.itemconfig(self.box_text, text="Done")
             self.next_btn.state(["!disabled"])
             return
