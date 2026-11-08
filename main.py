@@ -513,7 +513,7 @@ class PerformanceScreen(Screen):
 
     def begin_message(self):
         if self.idx >= len(MESSAGES):
-            self.result.config(text=f"Total encryption time: {self.delay:.1f} s")
+            self.result.config(text=f"Total encryption time: {self.game.total_time:.1f} s")
             self.canvas.itemconfig(self.box_text, text="Done")
             self.next_btn.state(["!disabled"])
             return
