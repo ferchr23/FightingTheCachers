@@ -383,7 +383,7 @@ class IntroScreen(Screen):
         self.title_lbl.pack(anchor="w", pady=(10, 8))
         self.text_lbl = self.label(self.body, "", font=("Helvetica", 13))
         self.text_lbl.pack(anchor="w")
-        image_path = Path(__file__).parent / "assets" / "aes_rounds_flowchart.png"
+        image_path = Path(__file__).parent / "aes_rounds_flowchart.png"
         self.intro_image = tk.PhotoImage(file=image_path).subsample(2, 2)
         self.image_lbl = ttk.Label(self.body, image=self.intro_image)
         self.next_btn = self.add_button("Next", self.next)
