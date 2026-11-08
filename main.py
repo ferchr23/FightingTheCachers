@@ -169,7 +169,7 @@ ASSESSMENT = [
 DECISIONS = ["sbox", "ttable", "masking", "hw"]
 
 # Performance parameters and their sources (for the simulation, not real numbers):
-BASE_DELAY = 10          # seconds per message for the slowest implementation
+BASE_DELAY = 10          # seconds per message for the slowest implementation, not justified, but has been tested to show that each implementation has a different resulting delay
 
 SBOX_SPEEDUP = 10       # table lookup instead of computing SubBytes 
 # (https://scispace.com/pdf/timing-attack-on-a-modified-dynamic-s-box-implementation-of-5dpgjkgbhx.pdf) Found that S-box lookup is 10 times faster than computing SubBytes
@@ -184,8 +184,8 @@ TRACES_SBOX = 2**13*3386       # traces to recover key: S-box only, assuming 102
 # (https://eprint.iacr.org/2005/271.pdf) found that reducing look ups to just S-boxes (no T-tables) with 1024 Byte tables, increased the number of traces needed by 3386 times
 TRACES_TTABLE = 2**13       # traces to recover key: T-tables
 # (https://www.iacr.org/archive/ches2006/16/16.pdf) in the remote timing attack on AES-128, using collisions within one encryption and targets the final round of encryption, taking worst case, 2^13 traces
-MASKING_MULTIPLIER = 200  # masking makes the attack this many times harder - still need a justifcation for this number
-NO_ATTACK_CAP = 100_000_000   # traces the simulated attacker tries before giving up
+MASKING_COMPONENT = 2  # (https://scispace.com/pdf/towards-sound-approaches-to-counteract-power-analysis-2ahx28uuq3.pdf), (https://iacr.org/submit/files/slides/2023/crypto/crypto2023/4/slides.pdf) Masking exponentially increases the noise in leakages, we are simulating a first-order masking which splits values into a mask and a masked value, creating 2 shares for each value. This means that the amount of noise in the system is squared by splitting the values into 2 shares. So we square the number of traces needed for the attack to account for this increase in noise
+NO_ATTACK_CAP = 23_726_566   # traces the simulated attacker can gather before the lifetime of the key is over (number of encryptions before the key must be changed) (https://www.ietf.org/archive/id/draft-ietf-tls-rfc8446bis-13.html section 5.5, defines a key lifetime of 2^24.5 records for AES-GCM, which is 23,726,566.4, round down to 23,726,566)
 
 def is_available(decision, choices):
     """T-tables build on S-box tables; masking protects table lookups."""
@@ -220,7 +220,7 @@ def traces_needed(choices):
     if choices.get("hw") or not choices.get("sbox"):
         return None
     n = TRACES_TTABLE if choices.get("ttable") else TRACES_SBOX
-    return n * MASKING_MULTIPLIER if choices.get("masking") else n
+    return n ** MASKING_COMPONENT if choices.get("masking") else n
 
 def explain_attack(choices, traces):
     if traces is None:
@@ -383,9 +383,15 @@ class IntroScreen(Screen):
         self.title_lbl.pack(anchor="w", pady=(10, 8))
         self.text_lbl = self.label(self.body, "", font=("Helvetica", 13))
         self.text_lbl.pack(anchor="w")
-        image_path = Path(__file__).parent / "assets" / "aes_rounds_flowchart.png"
-        self.intro_image = tk.PhotoImage(file=image_path).subsample(2, 2)
-        self.image_lbl = ttk.Label(self.body, image=self.intro_image)
+        aes_image_path = Path(__file__).parent / "assets" / "aes_rounds_flowchart.png"
+        cache_image_path = Path(__file__).parent / "assets" / "cache_state.png"
+        key_image_path = Path(__file__).parent / "assets" / "key_recovery.png"
+        self.aes_image = tk.PhotoImage(file=aes_image_path).subsample(2, 2)
+        self.aes_image_lbl = ttk.Label(self.body, image=self.aes_image)
+        self.cache_image = tk.PhotoImage(file=cache_image_path).subsample(2, 2)
+        self.cache_image_lbl = ttk.Label(self.body, image=self.cache_image)
+        self.key_image = tk.PhotoImage(file=key_image_path).subsample(2, 2)
+        self.key_image_lbl = ttk.Label(self.body, image=self.key_image)
         self.next_btn = self.add_button("Next", self.next)
         self.back_btn = self.add_button("Back", self.back)
         self.refresh()
@@ -394,10 +400,20 @@ class IntroScreen(Screen):
         t, *body = INTRO[self.i]
         self.title_lbl.config(text=f"{self.i + 1}/{len(INTRO)}  {t}")
         self.text_lbl.config(text="\n\n".join(body))
-        if self.i == 1:
-            self.image_lbl.pack(anchor="w", pady=(12, 0))
-        else:
-            self.image_lbl.pack_forget()
+        match(self.i):
+            case 1:
+                self.aes_image_lbl.pack(anchor="w", pady=(12, 0))
+            case 2:
+                try:
+                    self.aes_image_lbl.pack_forget()
+                except:
+                    print("No aes image to forget")
+                self.cache_image_lbl.pack(anchor="w", pady=(12, 0))
+                self.key_image_lbl.pack(anchor="w", pady=(12, 0))
+            case _:
+                self.aes_image_lbl.pack_forget()
+                self.cache_image_lbl.pack_forget()
+                self.key_image_lbl.pack_forget()
         self.back_btn.state(["!disabled"] if self.i else ["disabled"])
         self.next_btn.config(text="Start designing" if self.i == len(INTRO) - 1 else "Next")
 
