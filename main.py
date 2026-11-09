@@ -73,14 +73,14 @@ DECISION_INFO = {
 
 # (decision, value) -> (performance effect, cache-security effect) for the results screen
 EFFECTS = {
-    ("sbox", True): ("placeholder_performance_effect_1", "placeholder_security_effect_1"),
-    ("sbox", False): ("placeholder_performance_effect_2", "placeholder_security_effect_2"),
-    ("ttable", True): ("placeholder_performance_effect_3", "placeholder_security_effect_3"),
-    ("ttable", False): ("placeholder_performance_effect_4", "placeholder_security_effect_4"),
-    ("masking", True): ("placeholder_performance_effect_5", "placeholder_security_effect_5"),
-    ("masking", False): ("placeholder_performance_effect_6", "placeholder_security_effect_6"),
-    ("hw", True): ("placeholder_performance_effect_7", "placeholder_security_effect_7"),
-    ("hw", False): ("placeholder_performance_effect_8", "placeholder_security_effect_8"),
+    ("sbox", True): ("Speeds up performance, replacing computation with faster lookups", "Using lookup tables opens up the posibility of Cache Timing leakages"),
+    ("sbox", False): ("Computing SubBytes in real time is slower than S-box lookups", "Avoiding lookup tables prevents the most common source of Cache Timing leakages"),
+    ("ttable", True): ("Speeds up performance, combining multiple steps of computation into one lookup", "Greatly increases the amount of information leaked in Cache Timing attacks"),
+    ("ttable", False): ("Performing SubBytes, MixColumns, and MixRows separately is slower than one lookup", "Prevents more informantion to be leaked than from just sboxes"),
+    ("masking", True): ("Generating pseudorandom values and tables to be recomputed adds significant computation time", "First order Boolean masking increases the leakage noise exponentially by a power of 2, improving security"),
+    ("masking", False): ("Applying no mask keeps computation the same", "Applying no mask keeps security the same"),
+    ("hw", True): ("Specialized chips execute AES computation more efficiently speeding up computation", "Specialized chips have minimal impact on Cache Timing attack security"),
+    ("hw", False): ("Standard Processors generally use more instuctions and have a longer runtime", "Using a Standard Processor has minimal impact on Cache Timing attack security"),
 }
 
 # QUESTION PLACEHOLDERS: replace with real questions
@@ -152,18 +152,18 @@ PREDICTION_QUESTIONS = {
         answer=1, explanation="Without dedicated AES instructions, a general-purpose processor may need to execute multiple ordinary instructions to perform AES operations such as SubBytes and MixColumns. This can increase encryption time compared with hardware-accelerated AES. The processor can still implement AES correctly, and its vulnerability to cache attacks depends on the implementation—for example, whether it uses secret-dependent lookup tables."),
 }
 
-# Three separate questions for the final assessment.
-ASSESSMENT = [
-    dict(q="Why can two systems use the same AES algorithm but have different encryption performance?",
-        options=["Each system uses a different mathematical encryption algorithm, even if both are called AES.", "Different implementations can perform AES operations differently, such as using lookup tables, ordinary processor instructions, or specialized AES hardware.", "A system that encrypts messages more slowly must use a longer AES key.", "The AES algorithm automatically changes its number of operations depending on how fast the processor is."],
-        answer=1, explanation="AES defines the encryption operations, but implementations can execute those operations in different ways. Lookup tables and specialized processor instructions can improve performance, while computing operations using ordinary instructions may require more work."),
-    dict(q="Why can an AES implementation that uses lookup tables be vulnerable to cache timing attacks?",
-        options=["Lookup tables store the secret key in plaintext, allowing an attacker to read it directly.", "Lookup tables cause AES to skip some encryption rounds, making the ciphertext easier to decrypt.", "The locations accessed in a lookup table can depend on secret-related values, and those accesses can affect observable cache timing.", "Lookup tables prevent the processor from using its cache efficiently, making all memory accesses slower."],
-        answer=2, explanation="The memory locations accessed during AES may depend on intermediate values involving the secret key. Because cache hits and misses take different amounts of time, an attacker may use timing observations to infer information about the lookup patterns and potentially the key."),
-    dict(q="How can an attacker use differences between cache hits and cache misses to learn information about an AES computation?",
-        options=["By measuring execution times and using timing differences to infer which memory locations were accessed.", "By reading every value stored in the processor's cache without interacting with the system.", "By making cache misses change the mathematical operations performed by AES.", "By forcing AES to encrypt messages without using its secret key."],
-        answer=0, explanation="Cache hits are generally faster than cache misses. By measuring timing differences across repeated operations, an attacker may infer memory access patterns and learn information about secret-dependent computations. This does not automatically reveal the entire secret key or plaintext."),
-]
+# # Three separate questions for the final assessment.
+# ASSESSMENT = [
+#     dict(q="Why can two systems use the same AES algorithm but have different encryption performance?",
+#         options=["Each system uses a different mathematical encryption algorithm, even if both are called AES.", "Different implementations can perform AES operations differently, such as using lookup tables, ordinary processor instructions, or specialized AES hardware.", "A system that encrypts messages more slowly must use a longer AES key.", "The AES algorithm automatically changes its number of operations depending on how fast the processor is."],
+#         answer=1, explanation="AES defines the encryption operations, but implementations can execute those operations in different ways. Lookup tables and specialized processor instructions can improve performance, while computing operations using ordinary instructions may require more work."),
+#     dict(q="Why can an AES implementation that uses lookup tables be vulnerable to cache timing attacks?",
+#         options=["Lookup tables store the secret key in plaintext, allowing an attacker to read it directly.", "Lookup tables cause AES to skip some encryption rounds, making the ciphertext easier to decrypt.", "The locations accessed in a lookup table can depend on secret-related values, and those accesses can affect observable cache timing.", "Lookup tables prevent the processor from using its cache efficiently, making all memory accesses slower."],
+#         answer=2, explanation="The memory locations accessed during AES may depend on intermediate values involving the secret key. Because cache hits and misses take different amounts of time, an attacker may use timing observations to infer information about the lookup patterns and potentially the key."),
+#     dict(q="How can an attacker use differences between cache hits and cache misses to learn information about an AES computation?",
+#         options=["By measuring execution times and using timing differences to infer which memory locations were accessed.", "By reading every value stored in the processor's cache without interacting with the system.", "By making cache misses change the mathematical operations performed by AES.", "By forcing AES to encrypt messages without using its secret key."],
+#         answer=0, explanation="Cache hits are generally faster than cache misses. By measuring timing differences across repeated operations, an attacker may infer memory access patterns and learn information about secret-dependent computations. This does not automatically reveal the entire secret key or plaintext."),
+# ]
 
 # ------------------- game rules --------------------
 DECISIONS = ["sbox", "ttable", "masking", "hw"]
@@ -188,9 +188,11 @@ MASKING_COMPONENT = 2  # (https://scispace.com/pdf/towards-sound-approaches-to-c
 NO_ATTACK_CAP = 23_726_566   # traces the simulated attacker can gather before the lifetime of the key is over (number of encryptions before the key must be changed) (https://www.ietf.org/archive/id/draft-ietf-tls-rfc8446bis-13.html section 5.5, defines a key lifetime of 2^24.5 records for AES-GCM, which is 23,726,566.4, round down to 23,726,566)
 
 def is_available(decision, choices):
-    """T-tables build on S-box tables; masking protects table lookups."""
+    """T-tables build on S-box tables; masking protects table lookups. Specialized Hardware really needs computation to be done, not T-tables."""
     if decision in ("ttable", "masking"):
         return choices.get("sbox") is True
+    if decision in ("hw"):
+        return choices.get("ttable") is False
     return True
 
 def next_decision(choices):
@@ -203,6 +205,7 @@ def skipped_decisions(choices):
     return [d for d in DECISIONS if d not in choices and not is_available(d, choices)]
 
 def per_message_delay(choices):
+    """Set the length of per message encryption delay to simulate processing time for each design option."""
     f = BASE_DELAY
     if choices.get("sbox"):
         f /= SBOX_SPEEDUP
@@ -224,12 +227,16 @@ def traces_needed(choices):
 
 def explain_attack(choices, traces):
     if traces is None:
-        return "placeholder_attack_explanation_1"
-    s = "placeholder_attack_explanation_2 "
-    s += ("placeholder_attack_explanation_3"
-          if choices.get("masking") else
-          "placeholder_attack_explanation_4")
-    return s
+        return "By performing SubByte claculations in real time, or in specialized hardware, you avoided using secret-dependent table accesses. Your AES implementation may not be completely immune to cache timing leakage attacks, but it is secure against the most effective and well known attack methods. The attacker can not gain enough information to recover the secret key in within 2^24.5 (~23,726,566) encryptions, the standard lifetime of an AES key set by TLS Version 1.3. Your implementation is secure!"
+    if choices.get("ttable") and not choices.get("masking"):
+        return "By performing SubBytes, MixColumns, and ShiftRows together as T-tables, you created an implementation that is known to be vulnerable to cache timing attacks. The larger T-tables fill up a larger number of cache lines compared to S-boxes, so the attacker is more likely to learn information from each message encryption. Targetting the final round of encryption, the worst case attack on T-table implementations watching for collisions within rounds of encryption can recover the key within 2^13 (8192) encryptions. This is well within 2^24.5 (~23,726,566) encryptions, the standard lifetime of an AES key set by TLS Version 1.3. Consider incorporating masking to increase leakage noise, or move away from T-tables. Your implementation is not secure!"
+    if choices.get("ttable") and choices.get("masking"):
+        return "Traditionally, performing SubBytes, MixColumns, and ShiftRows together as T-tables is an implementation that is known to be vulnerable to cache timing attacks. The larger T-tables fill up a larger number of cache lines compared to S-boxes, so the attacker is more likely to learn information from each message encryption. Targetting the final round of encryption, the worst case attack on T-table implementations watching for collisions within rounds of encryption can recover the key within 2^13 (8192) encryptions. However, first order Boolean masking splits each value into 2 shares, a mask and a masked value. As a result, the leakage noise of the system increases expoenentially by a power of 2. We model this as increasing the number of encryptions needed from 8192 to (8192)^2 (67,108,864). This is on a similar order to 2^24.5 (~23,726,566) encryptions, the standard lifetime of an AES key set by TLS Version 1.3. While the entire key was not recovered, there is significant information leaked. Your implementation is partially secure!"
+    if choices.get("sbox") and not choices.get("masking"):
+        return "By performing SubBytes with precomputed S-boxes, you have an implementation that is partially vulnerable to cache timing attacks. It is more secure to cache timing leakages than using T-tables, as 1024 byte S-boxes have been shown to increase the number of traces an attacker needs to recover the secret key by a factor of 3386. This means the attacker needs 8192 * 3386 traces, or 27,738,112 encryptions. This is slightly greater than 2^24.5 (~23,726,566) encryptions, the standard lifetime of an AES key set by TLS Version 1.3. However, this does not guarantee a secure system, as significant information can still be leaked within the lifetime of the key. Your implementation is partially secure!"
+    if choices.get("sbox") and choices.get("masking"):
+        return "Traditionally, performing SubBytes with precomputed S-boxes creates an implementation that is partially vulnerable to cache timing attacks. It is more secure to cache timing leakages than using T-tables, as 1024 byte S-boxes have been shown to increase the number of traces an attacker needs to recover the secret key by a factor of 3386. This means the attacker needs 8192 * 3386 traces, or 27,738,112 encryptions. However, first order Boolean masking splits each value into 2 shares, a mask and a masked value. As a result, the leakage noise of the system increases expoenentially by a power of 2. We model this as increasing the number of encryptions needed from 27,738,112 to (27,738,112)^2 (769,402,857,324,544). This is significantly greater than 2^24.5 (~23,726,566) encryptions, the standard lifetime of an AES key set by TLS Version 1.3, so the attacker can not gain enough information to recover the secret key. Your implementation is secure!"
+    return "Unknown outcome"
 
 @dataclass
 class GameState:
@@ -561,7 +568,7 @@ class AttackScreen(Screen):
         super().__init__(app, "Simulated cache timing attack")
         self.traces = traces_needed(self.game.choices)
         self.game.traces = self.traces
-        self.label(self.body, "placeholder_attack_description_1").pack(anchor="w")
+        self.label(self.body, "The attacker will attempt to collect enough traces to recover your secret key.").pack(anchor="w")
         self.counter = ttk.Label(self.body, text="Traces collected: 0", style="Q.TLabel")
         self.counter.pack(anchor="w", pady=(14, 4))
         self.bar = ttk.Progressbar(self.body, length=500, maximum=self.STEPS)
@@ -576,7 +583,7 @@ class AttackScreen(Screen):
 
     def run(self):
         self.step += 1
-        target = self.traces or NO_ATTACK_CAP
+        target = min(self.traces, NO_ATTACK_CAP)
         self.bar["value"] = self.step
         self.counter.config(text=f"Traces collected: {int(target * self.step / self.STEPS):,}")
         if self.step < self.STEPS:
@@ -586,6 +593,9 @@ class AttackScreen(Screen):
 
     def conclude(self):
         if self.traces is None:
+            self.outcome.config(text=f"Attack failed: key NOT recovered after {NO_ATTACK_CAP:,} traces.",
+                                foreground="#1a7f37")
+        elif self.traces > NO_ATTACK_CAP:
             self.outcome.config(text=f"Attack failed: key NOT recovered after {NO_ATTACK_CAP:,} traces.",
                                 foreground="#1a7f37")
         else:
@@ -613,12 +623,17 @@ class ResultsScreen(Screen):
         correct = sum(ok for _, ok in g.predictions)
         total = ttk.LabelFrame(self.body, text="Overall", padding=10)
         total.pack(fill="x", pady=12)
-        t = "no practical attack found" if g.traces is None else f"{g.traces:,} traces to recover the key"
+        if g.traces is None:
+            t = "no practical attack found"
+        elif g.traces > NO_ATTACK_CAP:
+            t = f"key not recovered in {NO_ATTACK_CAP:,} traces"
+        else:
+            t = f"{g.traces:,} traces to recover the key"
         self.label(total, f"Total encryption time: {g.total_time:.1f} s\n"
                           f"Cache timing attack: {t}\n"
                           f"Prediction questions correct: {correct} of {len(g.predictions)}",
                    font=("Helvetica", 12)).pack(anchor="w")
-        self.label(self.body, "placeholder_results_summary_1", style="Sub.TLabel").pack(anchor="w")
+        self.label(self.body, "", style="Sub.TLabel").pack(anchor="w") # There was a placeholder results summary here, didn't know what exactly to put
         self.add_button("Final assessment", self.app.next_screen)
 
 class AssessmentScreen(Screen):
@@ -632,7 +647,7 @@ class AssessmentScreen(Screen):
         self.game.assessment_score, self.game.assessment_total = score, total
         self.quiz.destroy()
         ttk.Label(self.body, text=f"You scored {score} / {total}", style="Q.TLabel").pack(anchor="w", pady=20)
-        self.label(self.body, "placeholder_closing_message_1").pack(anchor="w")
+        self.label(self.body, "Thank you for playing our game!. You can now play again if you would like!").pack(anchor="w")
         self.add_button("Quit", self.app.destroy)
         self.add_button("Play again", self.app.restart)
 
