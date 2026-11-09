@@ -7,6 +7,7 @@ Run with:  python main.py
 
 """
 import tkinter as tk
+import tkinter.font as tkfont
 from dataclasses import dataclass, field
 from pathlib import Path #added by copilot to make it scrollable
 from tkinter import ttk
@@ -14,156 +15,129 @@ from typing import Optional
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 
-# ------------------- content -------------------
-INTRO = [
-    ("Welcome to Fighting the Cachers!", 
-    "On their own, encryption schemes like AES are nothing more than theoretical algorithms. For them to encrypt electronic messages, they must be implemented, either in software or in hardware. In this game, your goal is to implement the AES encryption algorithm in a way that is performant and secure against cache leakages.", 
-    "What is AES?", 
-    "AES, or the Advanced Encryption Standard, is the National Institute of Standards and Technology’s symmetric key encryption algorithm of choice for encrypting electronic data. AES is used by two parties who share a single secret key to encrypt and decrypt messages. AES takes blocks of data and encrypts them with a secret key, using confusion to obscure the relationship between the key/message and resulting ciphertext, as well as using diffusion to spread the influence of the message across the ciphertext."
-    ),
-    ("What does AES do?",
-     "As an algorithm, AES has 4 major steps:",
-     "-  a nonlinear function SubBytes",
-     "-  a rearranging of message bytes in ShiftRows", 
-     "-  a linear matrix multiplication in MixColumns", 
-     "-  and the application of the secret key in AddRoundKey.",
-     "These 4 steps make up a “Round” of AES, with many rounds being performed in series to encrypt a single block of the message. The number of rounds used depends on the length of your secret key. For example, AES-128 uses a 128-bit secret key and has 10 rounds, while AES-256 uses a 256-bit secret key and has 14 rounds.",
-    "When we talk about the AES algorithm, it is defined by these 4 steps and ways they come together in a series of rounds. Any implementation of AES in code or in hardware will all perform these steps. How they perform these steps is where implementations come into their own."
-    ),
-    ("What is the performance of an AES implementation?",
-     "When we discuss the performance of an AES implementation here, we are referring to the time required to encrypt messages. Implementations with higher performance will compute the steps in AES faster than those with a lower performance.",
-     "What are cache timing leakages?",
-     "To speed up the reading of data from memory, computers make use of caches. Caches temporarily store data that has been accessed recently, such that, if the data is needed again the processor can read it from the cache instead of a slower memory component. If the required data can be found in a cache, it is called a “cache hit,” while if the data cannot be found in the cache, it is called a “cache miss.” By nature, cache hits are faster memory accesses than cache misses.",
+ASSETS = Path(__file__).parent / "assets"
 
-     "Adversaries to a computer system can use cache hits and cache misses to learn what data has been stored in the cache recently. They can record the time required to run a program, such as AES, to determine if a cache hit or cache miss occurred. These “cache timing leakages” can allow an adversary to learn the access patterns of lookup tables.",
-     
-     ),
-    ("The role of lookup tables",
-    "In AES, lookup tables are often used to speed up computation. This increases the risk of cache timing leakages. The amount of information revealed through cache timing leakages can be reduced, but it often comes with a tradeoff and is entirely dependent on how AES has been implemented.",
-    "It is your task now to investigate those tradeoffs. You will now design an AES implementation that is both performant and resistant to cache timing leakages."
-     ),
+# ------------------- content -------------------
+# Each intro slide is a list of blocks:
+#   ("h", heading)  ("p", paragraph)  ("ul", [bullet, ...])  ("img", filename, subsample)
+INTRO = [
+    [
+        ("h", "Welcome to Fighting the Cachers!"),
+        ("p", "On their own, encryption schemes like AES are nothing more than theoretical algorithms. To encrypt electronic messages, they must be implemented, either in software or in hardware. In this game, your goal is to implement the AES encryption algorithm in a way that is both performant and secure against cache timing leakages."),
+        ("h", "What is AES?"),
+        ("p", "AES, or the Advanced Encryption Standard, is the National Institute of Standards and Technology’s symmetric-key encryption algorithm of choice for encrypting electronic data. AES is used by two parties who share a single secret key to encrypt and decrypt messages. AES takes blocks of data and encrypts them with the secret key. It uses confusion to obscure the relationship between the key/message and the resulting ciphertext, and diffusion to spread the influence of the message across the ciphertext."),
+    ],
+    [
+        ("h", "What does AES do?"),
+        ("p", "As an algorithm, AES has four major steps:"),
+        ("ul", ["SubBytes: a nonlinear substitution function",
+                "ShiftRows: a rearranging of the message bytes",
+                "MixColumns: a linear matrix multiplication",
+                "AddRoundKey: the application of the secret key"]),
+        ("p", "These four steps make up a “round” of AES, and many rounds are performed in series to encrypt a single block of the message. The number of rounds depends on the length of your secret key. For example, AES-128 uses a 128-bit secret key and has 10 rounds, while AES-256 uses a 256-bit secret key and has 14 rounds."),
+        ("p", "The AES algorithm is defined by these four steps and the way they come together in a series of rounds. Every implementation of AES, whether in software or in hardware, performs these steps. How it performs them is where implementations come into their own."),
+        ("img", "aes_rounds_flowchart.png", 2),
+    ],
+    [
+        ("h", "What is the performance of an AES implementation?"),
+        ("p", "When we discuss the performance of an AES implementation here, we are referring to the time required to encrypt messages. Implementations with higher performance compute the steps of AES faster than those with lower performance."),
+        ("h", "What are cache timing leakages?"),
+        ("p", "To speed up reading data from memory, computers make use of caches. Caches temporarily store data that has been accessed recently, so that if the data is needed again, the processor can read it from the cache instead of from a slower memory component. If the required data is found in the cache, it is called a “cache hit”; if it is not, it is called a “cache miss.” By nature, cache hits are faster memory accesses than cache misses."),
+        ("img", "cache_state.png", 1),
+        ("p", "Adversaries attacking a computer system can use cache hits and cache misses to learn what data has been stored in the cache recently. They can record the time required to run a program, such as AES, to determine whether a cache hit or a cache miss occurred. These “cache timing leakages” can allow an adversary to learn the access patterns of lookup tables."),
+        ("img", "key_recovery.png", 1),
+    ],
+    [
+        ("h", "The role of lookup tables"),
+        ("p", "In AES, lookup tables are often used to speed up computation, which increases the risk of cache timing leakages. The amount of information revealed through cache timing leakages can be reduced, but this often comes with a tradeoff and depends entirely on how AES has been implemented."),
+        ("p", "Your task now is to investigate those tradeoffs by designing an AES implementation that is both performant and resistant to cache timing leakages."),
+    ],
 ]
 
 DECISION_INFO = {
     "sbox": {
         "title": "Decision 1: 'Sub' me in coach!",
+        "name": "SubBytes method",
         "prompt": "Determine how your system handles the SubBytes operation. Choose carefully...",
-        True: ("Use S-boxes for SubBytes", "Pre-compute the non-linear substitutions applied in SubBytes when setting up AES. The substitutions are stored as a lookup table in memory. This lookup table, called an S-box, is 256 bytes in size and can fit into 4 lines of the cache. Which value is accessed in the S-box depends on the input value, which is a combination of the secret round key with either the plaintext message or the output of a previous round."),
-        False: ("Compute SubBytes Manually", "The substitutions applied in SubBytes can be numerically computed as an inversion in a Galois Field. Compared to the simpler computations in ShiftRows, MixColumns, and AddRoundKey, the inverse over a Galois Field is the most complicated part of an AES round."),
+        True: ("Use S-boxes for SubBytes", "Precompute the nonlinear substitutions applied in SubBytes when setting up AES. The substitutions are stored as a lookup table in memory. This lookup table, called an S-box, is 256 bytes in size and can fit into 4 lines of the cache. Which value is accessed in the S-box depends on the input value, which is a combination of the secret round key with either the plaintext message or the output of a previous round."),
+        False: ("Compute SubBytes Manually", "The substitutions applied in SubBytes can be computed numerically as an inversion in a Galois Field. Compared to the simpler computations in ShiftRows, MixColumns, and AddRoundKey, the inversion over a Galois Field is the most complicated part of an AES round."),
     },
     "ttable": {
         "title": "Decision 2: To T or not to T...",
+        "name": "T-tables",
         "prompt": "Will you choose to use T-tables or stick with the traditional route?",
-        True: ("Use T-tables for Each Round", "Similar to how S-boxes precompute the substitutions in SubBytes, T-tables precompute the computation of most of an entire round of AES. SubBytes, ShiftRows, and MixColumns are replaced with a memory table lookup, leaving only AddRoundKey to be performed in real time. Just as in S-boxes, the accessed value of the T-table lookup depends on the round key and either the plaintext message or the output of the previous round. To include the computation of ShiftRows and MixColumns, each T-table is 4 times the size of an S-box. This means they take up 16 lines on a cache instead of an S-box’s 4 lines."),
-        False: ("Perform Rounds Normally", "On the fly in each round, perform the logical computations to implement ShiftRows and MixColumns. ShiftRows is a simple reordering of bytes, and MixColumns is a matrix multiplication with a fixed array."),
+        True: ("Use T-tables for Each Round", "Similar to how S-boxes precompute the substitutions in SubBytes, T-tables precompute most of an entire round of AES. SubBytes, ShiftRows, and MixColumns are replaced with a memory table lookup, leaving only AddRoundKey to be performed in real time. Just as with S-boxes, the accessed value of the T-table lookup depends on the round key and either the plaintext message or the output of the previous round. To include the computation of ShiftRows and MixColumns, each T-table is 4 times the size of an S-box. This means each one takes up 16 cache lines instead of an S-box’s 4 lines."),
+        False: ("Perform Rounds Normally", "Perform the computations for ShiftRows and MixColumns on the fly in each round. ShiftRows is a simple reordering of bytes, and MixColumns is a matrix multiplication with a fixed array."),
     },
     "masking": {
         "title": "Decision 3: Mask off, hold up Mask on?",
+        "name": "Masking",
         "prompt": "Is masking what you need, or is it better to keep things the same? You decide.",
-        True: ("Use Boolean Masking for Memory Accesses", "Boolean Masking was originally created as a power-analysis countermeasure. Every intermediate value in AES is XORed with a random mask. All lookup tables are recomputed based on the mask, and any single lookup is uniformly random. This does not necessarily prevent cache attacks, but does work to obfuscate the absolute index of lookups. Applying a mask requires pseudorandom values to be generated and each lookup table to be recomputed, adding computation. It is possible to reuse masks for multiple lookups to reduce the computation, however this prevents the lookups from being uniformly random."),
+        True: ("Use Boolean Masking for Memory Accesses", "Boolean masking was originally created as a power-analysis countermeasure. Every intermediate value in AES is XORed with a random mask. All lookup tables are recomputed based on the mask, so any single lookup is uniformly random. This does not necessarily prevent cache attacks, but it does obscure the absolute index of lookups. Applying a mask requires pseudorandom values to be generated and each lookup table to be recomputed, which adds computation. Masks can be reused for multiple lookups to reduce this computation; however, the lookups are then no longer uniformly random."),
         False: ("Perform Memory Accesses as Usual", "All accesses to data in the cache are performed normally, with no masking."),
     },
     "hw": {
-        "title": "Decision 4: Chip decisions but not talking about Doritos vs Lays",
-        "prompt": "They finally released that fancy new chip, I hope your computer can handle it...",
-        True: ("Use a Special Instruction Chip", "Use a specialized chip that has been designed to execute AES efficiently. Examples include AES-NI from Intel and ARM Crypto. Each comes with dedicated instructions to execute AES round operations efficiently. Each of the round operations are implemented directly in hardware, rather than using general purpose arithmetic logic and instructions."),
-        False: ("Use a Standard Processor", "Use a general purpose processor to run your AES implementation. Some operations required in AES like XOR, shifting, and data movement are handled by existing logic and instructions. Other operations, like the Galois Field arithmetic of SubBytes and MixColumns are not commonly used by ALUs and must be implemented as a combination of smaller instructions. Using more instructions generally increases the runtime of a program."),
+        "title": "Decision 4: Chip decisions (and we're not talking Doritos vs. Lay's)",
+        "name": "Processor",
+        "prompt": "They finally released that fancy new chip. I hope your computer can handle it...",
+        True: ("Use a Special Instruction Chip", "Use a specialized chip that has been designed to execute AES efficiently. Examples include Intel's AES-NI and ARM's Crypto extensions, each of which provides dedicated instructions to execute AES round operations efficiently. Each of the round operations is implemented directly in hardware rather than with general-purpose arithmetic logic and instructions."),
+        False: ("Use a Standard Processor", "Use a general-purpose processor to run your AES implementation. Some operations required in AES, like XOR, shifting, and data movement, are handled by existing logic and instructions. Other operations, like the Galois Field arithmetic of SubBytes and MixColumns, are not commonly supported by ALUs and must be implemented as a combination of smaller instructions. Using more instructions generally increases the runtime of a program."),
     },
 }
 
 # (decision, value) -> (performance effect, cache-security effect) for the results screen
 EFFECTS = {
-    ("sbox", True): ("Speeds up performance, replacing computation with faster lookups", "Using lookup tables opens up the posibility of Cache Timing leakages"),
-    ("sbox", False): ("Computing SubBytes in real time is slower than S-box lookups", "Avoiding lookup tables prevents the most common source of Cache Timing leakages"),
-    ("ttable", True): ("Speeds up performance, combining multiple steps of computation into one lookup", "Greatly increases the amount of information leaked in Cache Timing attacks"),
-    ("ttable", False): ("Performing SubBytes, MixColumns, and MixRows separately is slower than one lookup", "Prevents more informantion to be leaked than from just sboxes"),
-    ("masking", True): ("Generating pseudorandom values and tables to be recomputed adds significant computation time", "First order Boolean masking increases the leakage noise exponentially by a power of 2, improving security"),
-    ("masking", False): ("Applying no mask keeps computation the same", "Applying no mask keeps security the same"),
-    ("hw", True): ("Specialized chips execute AES computation more efficiently speeding up computation", "Specialized chips have minimal impact on Cache Timing attack security"),
-    ("hw", False): ("Standard Processors generally use more instuctions and have a longer runtime", "Using a Standard Processor has minimal impact on Cache Timing attack security"),
+    ("sbox", True): ("Speeds up performance by replacing computation with faster lookups.", "Using lookup tables opens up the possibility of cache timing leakages."),
+    ("sbox", False): ("Computing SubBytes in real time is slower than S-box lookups.", "Avoiding lookup tables prevents the most common source of cache timing leakages."),
+    ("ttable", True): ("Speeds up performance by combining multiple steps of computation into one lookup.", "Greatly increases the amount of information leaked in cache timing attacks."),
+    ("ttable", False): ("Performing SubBytes, ShiftRows, and MixColumns separately is slower than one lookup.", "Prevents more information from being leaked than with S-boxes alone."),
+    ("masking", True): ("Generating pseudorandom masks and recomputing tables adds significant computation time.", "First-order Boolean masking increases the leakage noise exponentially (by a power of 2), improving security."),
+    ("masking", False): ("Applying no mask keeps computation the same.", "Applying no mask keeps security the same."),
+    ("hw", True): ("Specialized chips execute AES computation more efficiently, speeding up encryption.", "Specialized chips have minimal impact on cache timing attack security."),
+    ("hw", False): ("Standard processors generally use more instructions and have a longer runtime.", "Using a standard processor has minimal impact on cache timing attack security."),
 }
 
-# QUESTION PLACEHOLDERS: replace with real questions
 # Each question: dict(q=text, options=[...], answer=index of correct option, explanation=text)
-def placeholder_question(n):
-    return dict(q="Implementing SubBytes with S-box lookup tables will most likely…",
-                options=["Improve performance, but potentially expose secret-dependent memory accesses to cache attacks.", " Reduce performance and automatically prevent cache attacks", "Improve performance and eliminate all implementation-level vulnerabilities.", "Change the mathematical operations that define AES."],
-                answer=0, explanation="Lookup tables can speed up SubBytes, but the accessed location can depend on secret-related intermediate values. Cache observations may reveal information about those accesses.")
-dict(q="If you compute the SubBytes transformation mathematically instead of using an S-box lookup table, what is the most likely tradeoff?",
-                options=["Higher performance because all mathematical operations are faster than memory accesses.", " Potentially more computation, but less reliance on secret-dependent table accesses.", "No change in performance or cache behavior because AES is unchanged.", "Guaranteed immunity to every cache attack, regardless of how the computation is implemented."],
-                answer=1, explanation="Computing the finite-field transformation can require more instructions than a table lookup. It can avoid the particular leakage mechanism caused by secret-dependent table accesses, provided the computation itself is implemented appropriately. Arithmetic alone does not guarantee constant-time execution.")
-dict(q="Compared with an S-box lookup implementation, using T-tables to combine several AES round operations will most likely…",
-                options=["Require fewer table lookups, use less cache space, and eliminate cache leakage.", " Replace the entire AES algorithm with a different encryption algorithm.", "Potentially speed up round processing, but use larger tables and expose more cache locations to secret-dependent accesses.", "Make AES slower while guaranteeing that every memory access is independent of the secret key."],
-                answer=2, explanation="T-tables combine work from multiple AES transformations, potentially reducing instruction overhead. However, they occupy more cache space than S-box tables and still use secret-dependent lookups, which can create cache leakage.")
-dict(q="If you perform ShiftRows and MixColumns as separate operations instead of combining them into T-tables, what should you expect?",
-                options=["More explicit computation, but less reliance on large T-table lookups.", "Guaranteed faster execution and complete protection against cache attacks.", " Elimination of all memory accesses during AES encryption.", "A change to AES's underlying encryption algorithm."],
-                answer=0, explanation=" Performing the transformations requires more instructions than using T-tables. It avoids the large combined tables, but it does not necessarily eliminate cache leakage if the implementation still uses an S-box lookup table.")
-dict(q="What is a likely tradeoff when you use Boolean masking for lookup-table accesses?",
-                options=["It makes every AES operation faster without requiring additional computation.", "It makes the AES key longer and therefore harder to guess.", "It can make lookup patterns harder to interpret, but generating masks and adapting tables adds computation.", "It guarantees that the attacker can never learn anything from the cache."],
-                answer=2, explanation="Boolean masking uses random values to obscure intermediate AES values and adapt lookup tables. This can make the relationship between secret values and observed lookup patterns harder to interpret. However, generating masks and adapting tables adds computational overhead.")
-dict(q="If lookup-table accesses are performed normally, without masking, what opportunity might this give an attacker?",
-                options=["The attacker can automatically read every encrypted message as plaintext.", "The attacker can use cache timing differences to investigate which lookup-table locations were accessed.", "The attacker can make AES skip its AddRoundKey operation.", "The attacker can prevent the processor from using its cache."],
-                answer=1, explanation="When lookup-table accesses are performed normally, their locations may depend on secret-related values. Because cache hits and misses take different amounts of time, an attacker may measure timing differences to infer which table locations were accessed. These observations can reveal information, but do not automatically expose the plaintext or the entire secret key.")
-dict(q="What is a likely advantage of using specialized AES instructions, such as AES-NI or ARM Crypto extensions?",
-                options=["They change AES into a stronger encryption algorithm.", "They guarantee protection against every possible attack.", "They allow AES to run without any processor hardware.", "They can execute AES operations efficiently using dedicated hardware, reducing the work required from ordinary software instructions."],
-                answer=3, explanation="Specialized instructions such as AES-NI and ARM Crypto extensions allow compatible processors to perform AES operations using dedicated hardware. This can reduce the number of ordinary software instructions needed and improve encryption performance. These instructions can also avoid the classic cache-leakage mechanism associated with secret-dependent software lookup tables, but they do not eliminate every possible vulnerability.")
-dict(q="What is a likely consequence of implementing AES on a standard processor without dedicated AES instructions?",
-                options=["AES cannot be implemented correctly on that processor.", "AES may require more ordinary instructions to perform its operations, increasing the time needed to encrypt messages.", "AES automatically becomes resistant to cache timing attacks.", "AES no longer needs to perform SubBytes, ShiftRows, MixColumns, or AddRoundKey."],
-                answer=1, explanation="Without dedicated AES instructions, a general-purpose processor may need to execute multiple ordinary instructions to perform AES operations such as SubBytes and MixColumns. This can increase encryption time compared with hardware-accelerated AES. The processor can still implement AES correctly, and its vulnerability to cache attacks depends on the implementation—for example, whether it uses secret-dependent lookup tables.")
-dict(q="Why can two systems use the same AES algorithm but have different encryption performance?",
-                options=["Each system uses a different mathematical encryption algorithm, even if both are called AES.", "Different implementations can perform AES operations differently, such as using lookup tables, ordinary processor instructions, or specialized AES hardware.", "A system that encrypts messages more slowly must use a longer AES key.", "The AES algorithm automatically changes its number of operations depending on how fast the processor is."],
-                answer=1, explanation="AES defines the encryption operations, but implementations can execute those operations in different ways. Lookup tables and specialized processor instructions can improve performance, while computing operations using ordinary instructions may require more work.")
-dict(q="Why can an AES implementation that uses lookup tables be vulnerable to cache timing attacks?",
-                options=["Lookup tables store the secret key in plaintext, allowing an attacker to read it directly.", "Lookup tables cause AES to skip some encryption rounds, making the ciphertext easier to decrypt.", "The locations accessed in a lookup table can depend on secret-related values, and those accesses can affect observable cache timing.", "Lookup tables prevent the processor from using its cache efficiently, making all memory accesses slower."],
-                answer=2, explanation="The memory locations accessed during AES may depend on intermediate values involving the secret key. Because cache hits and misses take different amounts of time, an attacker may use timing observations to infer information about the lookup patterns and potentially the key.")
-dict(q="How can an attacker use differences between cache hits and cache misses to learn information about an AES computation?",
-                options=["By measuring execution times and using timing differences to infer which memory locations were accessed.", "By reading every value stored in the processor's cache without interacting with the system.", "By making cache misses change the mathematical operations performed by AES.", "By forcing AES to encrypt messages without using its secret key."],
-                answer=0, explanation="Cache hits are generally faster than cache misses. By measuring timing differences across repeated operations, an attacker may infer memory access patterns and learn information about secret-dependent computations. This does not automatically reveal the entire secret key or plaintext.")
-# Prediction phase: one question per decision the student made (numbered in order shown).
-# To write real ones, build them in PredictScreen from the student's choice (see that class).
-NUM_ASSESSMENT_QUESTIONS = 10
-ASSESSMENT = [placeholder_question(n) for n in range(1, NUM_ASSESSMENT_QUESTIONS + 1)]
-
-# Questions are selected by the implementation decision and the player's choice.
+# Prediction phase: one question per decision the student made, selected by the decision and the player's choice.
 PREDICTION_QUESTIONS = {
     ("sbox", True): dict(q="Implementing SubBytes with S-box lookup tables will most likely…",
-        options=["Improve performance, but potentially expose secret-dependent memory accesses to cache attacks.", " Reduce performance and automatically prevent cache attacks", "Improve performance and eliminate all implementation-level vulnerabilities.", "Change the mathematical operations that define AES."],
+        options=["Improve performance, but potentially expose secret-dependent memory accesses to cache attacks.", "Reduce performance and automatically prevent cache attacks.", "Improve performance and eliminate all implementation-level vulnerabilities.", "Change the mathematical operations that define AES."],
         answer=0, explanation="Lookup tables can speed up SubBytes, but the accessed location can depend on secret-related intermediate values. Cache observations may reveal information about those accesses."),
     ("sbox", False): dict(q="If you compute the SubBytes transformation mathematically instead of using an S-box lookup table, what is the most likely tradeoff?",
-        options=["Higher performance because all mathematical operations are faster than memory accesses.", " Potentially more computation, but less reliance on secret-dependent table accesses.", "No change in performance or cache behavior because AES is unchanged.", "Guaranteed immunity to every cache attack, regardless of how the computation is implemented."],
+        options=["Higher performance, because all mathematical operations are faster than memory accesses.", "Potentially more computation, but less reliance on secret-dependent table accesses.", "No change in performance or cache behavior, because AES is unchanged.", "Guaranteed immunity to every cache attack, regardless of how the computation is implemented."],
         answer=1, explanation="Computing the finite-field transformation can require more instructions than a table lookup. It can avoid the particular leakage mechanism caused by secret-dependent table accesses, provided the computation itself is implemented appropriately. Arithmetic alone does not guarantee constant-time execution."),
     ("ttable", True): dict(q="Compared with an S-box lookup implementation, using T-tables to combine several AES round operations will most likely…",
-        options=["Require fewer table lookups, use less cache space, and eliminate cache leakage.", " Replace the entire AES algorithm with a different encryption algorithm.", "Potentially speed up round processing, but use larger tables and expose more cache locations to secret-dependent accesses.", "Make AES slower while guaranteeing that every memory access is independent of the secret key."],
+        options=["Require fewer table lookups, use less cache space, and eliminate cache leakage.", "Replace the entire AES algorithm with a different encryption algorithm.", "Potentially speed up round processing, but use larger tables and expose more cache locations to secret-dependent accesses.", "Make AES slower while guaranteeing that every memory access is independent of the secret key."],
         answer=2, explanation="T-tables combine work from multiple AES transformations, potentially reducing instruction overhead. However, they occupy more cache space than S-box tables and still use secret-dependent lookups, which can create cache leakage."),
     ("ttable", False): dict(q="If you perform ShiftRows and MixColumns as separate operations instead of combining them into T-tables, what should you expect?",
-        options=["More explicit computation, but less reliance on large T-table lookups.", "Guaranteed faster execution and complete protection against cache attacks.", " Elimination of all memory accesses during AES encryption.", "A change to AES's underlying encryption algorithm."],
-        answer=0, explanation=" Performing the transformations requires more instructions than using T-tables. It avoids the large combined tables, but it does not necessarily eliminate cache leakage if the implementation still uses an S-box lookup table."),
+        options=["More explicit computation, but less reliance on large T-table lookups.", "Guaranteed faster execution and complete protection against cache attacks.", "Elimination of all memory accesses during AES encryption.", "A change to AES's underlying encryption algorithm."],
+        answer=0, explanation="Performing the transformations separately requires more instructions than using T-tables. It avoids the large combined tables, but it does not necessarily eliminate cache leakage if the implementation still uses an S-box lookup table."),
     ("masking", True): dict(q="What is a likely tradeoff when you use Boolean masking for lookup-table accesses?",
         options=["It makes every AES operation faster without requiring additional computation.", "It makes the AES key longer and therefore harder to guess.", "It can make lookup patterns harder to interpret, but generating masks and adapting tables adds computation.", "It guarantees that the attacker can never learn anything from the cache."],
         answer=2, explanation="Boolean masking uses random values to obscure intermediate AES values and adapt lookup tables. This can make the relationship between secret values and observed lookup patterns harder to interpret. However, generating masks and adapting tables adds computational overhead."),
     ("masking", False): dict(q="If lookup-table accesses are performed normally, without masking, what opportunity might this give an attacker?",
         options=["The attacker can automatically read every encrypted message as plaintext.", "The attacker can use cache timing differences to investigate which lookup-table locations were accessed.", "The attacker can make AES skip its AddRoundKey operation.", "The attacker can prevent the processor from using its cache."],
-        answer=1, explanation="When lookup-table accesses are performed normally, their locations may depend on secret-related values. Because cache hits and misses take different amounts of time, an attacker may measure timing differences to infer which table locations were accessed. These observations can reveal information, but do not automatically expose the plaintext or the entire secret key."),
+        answer=1, explanation="When lookup-table accesses are performed normally, their locations may depend on secret-related values. Because cache hits and misses take different amounts of time, an attacker may measure timing differences to infer which table locations were accessed. These observations can reveal information, but they do not automatically expose the plaintext or the entire secret key."),
     ("hw", True): dict(q="What is a likely advantage of using specialized AES instructions, such as AES-NI or ARM Crypto extensions?",
         options=["They change AES into a stronger encryption algorithm.", "They guarantee protection against every possible attack.", "They allow AES to run without any processor hardware.", "They can execute AES operations efficiently using dedicated hardware, reducing the work required from ordinary software instructions."],
         answer=3, explanation="Specialized instructions such as AES-NI and ARM Crypto extensions allow compatible processors to perform AES operations using dedicated hardware. This can reduce the number of ordinary software instructions needed and improve encryption performance. These instructions can also avoid the classic cache-leakage mechanism associated with secret-dependent software lookup tables, but they do not eliminate every possible vulnerability."),
     ("hw", False): dict(q="What is a likely consequence of implementing AES on a standard processor without dedicated AES instructions?",
         options=["AES cannot be implemented correctly on that processor.", "AES may require more ordinary instructions to perform its operations, increasing the time needed to encrypt messages.", "AES automatically becomes resistant to cache timing attacks.", "AES no longer needs to perform SubBytes, ShiftRows, MixColumns, or AddRoundKey."],
-        answer=1, explanation="Without dedicated AES instructions, a general-purpose processor may need to execute multiple ordinary instructions to perform AES operations such as SubBytes and MixColumns. This can increase encryption time compared with hardware-accelerated AES. The processor can still implement AES correctly, and its vulnerability to cache attacks depends on the implementation—for example, whether it uses secret-dependent lookup tables."),
+        answer=1, explanation="Without dedicated AES instructions, a general-purpose processor may need to execute multiple ordinary instructions to perform AES operations such as SubBytes and MixColumns. This can increase encryption time compared with hardware-accelerated AES. The processor can still implement AES correctly, and its vulnerability to cache attacks depends on the implementation, for example, whether it uses secret-dependent lookup tables."),
 }
 
-# # Three separate questions for the final assessment.
-# ASSESSMENT = [
-#     dict(q="Why can two systems use the same AES algorithm but have different encryption performance?",
-#         options=["Each system uses a different mathematical encryption algorithm, even if both are called AES.", "Different implementations can perform AES operations differently, such as using lookup tables, ordinary processor instructions, or specialized AES hardware.", "A system that encrypts messages more slowly must use a longer AES key.", "The AES algorithm automatically changes its number of operations depending on how fast the processor is."],
-#         answer=1, explanation="AES defines the encryption operations, but implementations can execute those operations in different ways. Lookup tables and specialized processor instructions can improve performance, while computing operations using ordinary instructions may require more work."),
-#     dict(q="Why can an AES implementation that uses lookup tables be vulnerable to cache timing attacks?",
-#         options=["Lookup tables store the secret key in plaintext, allowing an attacker to read it directly.", "Lookup tables cause AES to skip some encryption rounds, making the ciphertext easier to decrypt.", "The locations accessed in a lookup table can depend on secret-related values, and those accesses can affect observable cache timing.", "Lookup tables prevent the processor from using its cache efficiently, making all memory accesses slower."],
-#         answer=2, explanation="The memory locations accessed during AES may depend on intermediate values involving the secret key. Because cache hits and misses take different amounts of time, an attacker may use timing observations to infer information about the lookup patterns and potentially the key."),
-#     dict(q="How can an attacker use differences between cache hits and cache misses to learn information about an AES computation?",
-#         options=["By measuring execution times and using timing differences to infer which memory locations were accessed.", "By reading every value stored in the processor's cache without interacting with the system.", "By making cache misses change the mathematical operations performed by AES.", "By forcing AES to encrypt messages without using its secret key."],
-#         answer=0, explanation="Cache hits are generally faster than cache misses. By measuring timing differences across repeated operations, an attacker may infer memory access patterns and learn information about secret-dependent computations. This does not automatically reveal the entire secret key or plaintext."),
-# ]
+# Final assessment: every prediction question, followed by three general questions.
+ASSESSMENT = list(PREDICTION_QUESTIONS.values()) + [
+    dict(q="Why can two systems use the same AES algorithm but have different encryption performance?",
+        options=["Each system uses a different mathematical encryption algorithm, even if both are called AES.", "Different implementations can perform AES operations differently, such as using lookup tables, ordinary processor instructions, or specialized AES hardware.", "A system that encrypts messages more slowly must use a longer AES key.", "The AES algorithm automatically changes its number of operations depending on how fast the processor is."],
+        answer=1, explanation="AES defines the encryption operations, but implementations can execute those operations in different ways. Lookup tables and specialized processor instructions can improve performance, while computing operations using ordinary instructions may require more work."),
+    dict(q="Why can an AES implementation that uses lookup tables be vulnerable to cache timing attacks?",
+        options=["Lookup tables store the secret key in plaintext, allowing an attacker to read it directly.", "Lookup tables cause AES to skip some encryption rounds, making the ciphertext easier to decrypt.", "The locations accessed in a lookup table can depend on secret-related values, and those accesses can affect observable cache timing.", "Lookup tables prevent the processor from using its cache efficiently, making all memory accesses slower."],
+        answer=2, explanation="The memory locations accessed during AES may depend on intermediate values involving the secret key. Because cache hits and misses take different amounts of time, an attacker may use timing observations to infer information about the lookup patterns and potentially the key."),
+    dict(q="How can an attacker use differences between cache hits and cache misses to learn information about an AES computation?",
+        options=["By measuring execution times and using timing differences to infer which memory locations were accessed.", "By reading every value stored in the processor's cache without interacting with the system.", "By making cache misses change the mathematical operations performed by AES.", "By forcing AES to encrypt messages without using its secret key."],
+        answer=0, explanation="Cache hits are generally faster than cache misses. By measuring timing differences across repeated operations, an attacker may infer memory access patterns and learn information about secret-dependent computations. This does not automatically reveal the entire secret key or plaintext."),
+]
 
 # ------------------- game rules --------------------
 DECISIONS = ["sbox", "ttable", "masking", "hw"]
@@ -171,7 +145,7 @@ DECISIONS = ["sbox", "ttable", "masking", "hw"]
 # Performance parameters and their sources (for the simulation, not real numbers):
 BASE_DELAY = 10          # seconds per message for the slowest implementation, not justified, but has been tested to show that each implementation has a different resulting delay
 
-SBOX_SPEEDUP = 10       # table lookup instead of computing SubBytes 
+SBOX_SPEEDUP = 10       # table lookup instead of computing SubBytes
 # (https://scispace.com/pdf/timing-attack-on-a-modified-dynamic-s-box-implementation-of-5dpgjkgbhx.pdf) Found that S-box lookup is 10 times faster than computing SubBytes
 TTABLE_SPEEDUP = 0.25     # merged round tables instead of separate steps
 # (https://rd.springer.com/content/pdf/10.1007/11552055_2.pdf) Found that best case T-tables decrease cycle count from 1600 to 1200, for 25% speedup
@@ -191,8 +165,8 @@ def is_available(decision, choices):
     """T-tables build on S-box tables; masking protects table lookups. Specialized Hardware really needs computation to be done, not T-tables."""
     if decision in ("ttable", "masking"):
         return choices.get("sbox") is True
-    if decision in ("hw"):
-        return choices.get("ttable") is False
+    if decision == "hw":
+        return choices.get("ttable") is not True
     return True
 
 def next_decision(choices):
@@ -202,7 +176,10 @@ def next_decision(choices):
     return None
 
 def skipped_decisions(choices):
-    return [d for d in DECISIONS if d not in choices and not is_available(d, choices)]
+    """Decisions already passed over because they conflict with earlier choices."""
+    nxt = next_decision(choices)
+    upto = DECISIONS.index(nxt) if nxt else len(DECISIONS)
+    return [d for d in DECISIONS[:upto] if d not in choices and not is_available(d, choices)]
 
 def per_message_delay(choices):
     """Set the length of per message encryption delay to simulate processing time for each design option."""
@@ -227,15 +204,15 @@ def traces_needed(choices):
 
 def explain_attack(choices, traces):
     if traces is None:
-        return "By performing SubByte claculations in real time, or in specialized hardware, you avoided using secret-dependent table accesses. Your AES implementation may not be completely immune to cache timing leakage attacks, but it is secure against the most effective and well known attack methods. The attacker can not gain enough information to recover the secret key in within 2^24.5 (~23,726,566) encryptions, the standard lifetime of an AES key set by TLS Version 1.3. Your implementation is secure!"
+        return "By performing SubBytes calculations in real time or in specialized hardware, you avoided using secret-dependent table accesses. Your AES implementation may not be completely immune to cache timing leakage attacks, but it is secure against the most effective and well-known attack methods. The attacker cannot gain enough information to recover the secret key within 2^24.5 (~23,726,566) encryptions, the standard lifetime of an AES key set by TLS version 1.3. Your implementation is secure!"
     if choices.get("ttable") and not choices.get("masking"):
-        return "By performing SubBytes, MixColumns, and ShiftRows together as T-tables, you created an implementation that is known to be vulnerable to cache timing attacks. The larger T-tables fill up a larger number of cache lines compared to S-boxes, so the attacker is more likely to learn information from each message encryption. Targetting the final round of encryption, the worst case attack on T-table implementations watching for collisions within rounds of encryption can recover the key within 2^13 (8192) encryptions. This is well within 2^24.5 (~23,726,566) encryptions, the standard lifetime of an AES key set by TLS Version 1.3. Consider incorporating masking to increase leakage noise, or move away from T-tables. Your implementation is not secure!"
+        return "By performing SubBytes, ShiftRows, and MixColumns together as T-tables, you created an implementation that is known to be vulnerable to cache timing attacks. The larger T-tables fill a larger number of cache lines than S-boxes do, so the attacker is more likely to learn information from each message encryption. Targeting the final round of encryption, the worst-case attack on T-table implementations, which watches for collisions within rounds of encryption, can recover the key within 2^13 (8,192) encryptions. This is well within 2^24.5 (~23,726,566) encryptions, the standard lifetime of an AES key set by TLS version 1.3. Consider incorporating masking to increase leakage noise, or move away from T-tables. Your implementation is not secure!"
     if choices.get("ttable") and choices.get("masking"):
-        return "Traditionally, performing SubBytes, MixColumns, and ShiftRows together as T-tables is an implementation that is known to be vulnerable to cache timing attacks. The larger T-tables fill up a larger number of cache lines compared to S-boxes, so the attacker is more likely to learn information from each message encryption. Targetting the final round of encryption, the worst case attack on T-table implementations watching for collisions within rounds of encryption can recover the key within 2^13 (8192) encryptions. However, first order Boolean masking splits each value into 2 shares, a mask and a masked value. As a result, the leakage noise of the system increases expoenentially by a power of 2. We model this as increasing the number of encryptions needed from 8192 to (8192)^2 (67,108,864). This is on a similar order to 2^24.5 (~23,726,566) encryptions, the standard lifetime of an AES key set by TLS Version 1.3. While the entire key was not recovered, there is significant information leaked. Your implementation is partially secure!"
+        return "Traditionally, performing SubBytes, ShiftRows, and MixColumns together as T-tables creates an implementation that is known to be vulnerable to cache timing attacks. The larger T-tables fill a larger number of cache lines than S-boxes do, so the attacker is more likely to learn information from each message encryption. Targeting the final round of encryption, the worst-case attack on T-table implementations, which watches for collisions within rounds of encryption, can recover the key within 2^13 (8,192) encryptions. However, first-order Boolean masking splits each value into 2 shares: a mask and a masked value. As a result, the leakage noise of the system increases exponentially (by a power of 2). We model this as increasing the number of encryptions needed from 8,192 to 8,192^2 (67,108,864). This is on a similar order to 2^24.5 (~23,726,566) encryptions, the standard lifetime of an AES key set by TLS version 1.3. While the entire key was not recovered, significant information was leaked. Your implementation is partially secure!"
     if choices.get("sbox") and not choices.get("masking"):
-        return "By performing SubBytes with precomputed S-boxes, you have an implementation that is partially vulnerable to cache timing attacks. It is more secure to cache timing leakages than using T-tables, as 1024 byte S-boxes have been shown to increase the number of traces an attacker needs to recover the secret key by a factor of 3386. This means the attacker needs 8192 * 3386 traces, or 27,738,112 encryptions. This is slightly greater than 2^24.5 (~23,726,566) encryptions, the standard lifetime of an AES key set by TLS Version 1.3. However, this does not guarantee a secure system, as significant information can still be leaked within the lifetime of the key. Your implementation is partially secure!"
+        return "By performing SubBytes with precomputed S-boxes, you created an implementation that is partially vulnerable to cache timing attacks. It is more resistant to cache timing leakages than using T-tables, as 1024-byte S-boxes have been shown to increase the number of traces an attacker needs to recover the secret key by a factor of 3,386. This means the attacker needs 8,192 × 3,386 traces, or 27,738,112 encryptions. This is slightly greater than 2^24.5 (~23,726,566) encryptions, the standard lifetime of an AES key set by TLS version 1.3. However, this does not guarantee a secure system, as significant information can still be leaked within the lifetime of the key. Your implementation is partially secure!"
     if choices.get("sbox") and choices.get("masking"):
-        return "Traditionally, performing SubBytes with precomputed S-boxes creates an implementation that is partially vulnerable to cache timing attacks. It is more secure to cache timing leakages than using T-tables, as 1024 byte S-boxes have been shown to increase the number of traces an attacker needs to recover the secret key by a factor of 3386. This means the attacker needs 8192 * 3386 traces, or 27,738,112 encryptions. However, first order Boolean masking splits each value into 2 shares, a mask and a masked value. As a result, the leakage noise of the system increases expoenentially by a power of 2. We model this as increasing the number of encryptions needed from 27,738,112 to (27,738,112)^2 (769,402,857,324,544). This is significantly greater than 2^24.5 (~23,726,566) encryptions, the standard lifetime of an AES key set by TLS Version 1.3, so the attacker can not gain enough information to recover the secret key. Your implementation is secure!"
+        return "Traditionally, performing SubBytes with precomputed S-boxes creates an implementation that is partially vulnerable to cache timing attacks. It is more resistant to cache timing leakages than using T-tables, as 1024-byte S-boxes have been shown to increase the number of traces an attacker needs to recover the secret key by a factor of 3,386. This means the attacker needs 8,192 × 3,386 traces, or 27,738,112 encryptions. However, first-order Boolean masking splits each value into 2 shares: a mask and a masked value. As a result, the leakage noise of the system increases exponentially (by a power of 2). We model this as increasing the number of encryptions needed from 27,738,112 to 27,738,112^2 (769,402,857,324,544). This is significantly greater than 2^24.5 (~23,726,566) encryptions, the standard lifetime of an AES key set by TLS version 1.3, so the attacker cannot gain enough information to recover the secret key. Your implementation is secure!"
     return "Unknown outcome"
 
 @dataclass
@@ -259,32 +236,44 @@ def encrypt(key, message):
     return AES.new(key, AES.MODE_ECB).encrypt(pad(message.encode(), 16))
 
 # ------------------- ui helpers ---------------------
-WRAP = 780
+WRAP = 780            # starting wrap width; labels re-wrap to the window width once laid out
+GREEN, RED = "#1a7f37", "#c62828"
+
+def autowrap(widget, margin=0):
+    """Re-wrap a label's text whenever its width changes. Pack/grid it so it fills horizontally."""
+    widget.bind("<Configure>", lambda e: widget.configure(wraplength=max(e.width - margin, 100)), add="+")
+    return widget
 
 class Screen(ttk.Frame):
     def __init__(self, app, title):
-        super().__init__(app, padding=20)
+        super().__init__(app, padding=(24, 16, 24, 12))
         self.app = app
         self.game = app.game          # NOTE: not "state": Tk already has a .state() method
-        ttk.Label(self, text=title, style="Title.TLabel").pack(anchor="w", pady=(0, 12))
-        #From line 189 to 203 and 207 to 224 added by copilot to make it scrollable.
+        ttk.Label(self, text=title, style="Title.TLabel").pack(pady=(0, 8))
+        ttk.Separator(self).pack(fill="x", pady=(0, 12))
+        # Footer is packed before the body so it always stays visible at the bottom.
+        self.footer = ttk.Frame(self)
+        self.footer.pack(side="bottom", fill="x", pady=(10, 0))
+        ttk.Separator(self).pack(side="bottom", fill="x")
+        ttk.Label(self.footer, text=f"Step {app.index + 1} of {len(app.FLOW)}",
+                  style="Sub.TLabel").pack(side="left")
+        #From here to _scroll_body added by copilot to make it scrollable.
         self.body_area = ttk.Frame(self)
         self.body_area.pack(fill="both", expand=True)
         self.body_area.columnconfigure(0, weight=1)
         self.body_area.rowconfigure(0, weight=1)
-        self.body_canvas = tk.Canvas(self.body_area, borderwidth=0, highlightthickness=0)
+        self.body_canvas = tk.Canvas(self.body_area, borderwidth=0, highlightthickness=0,
+                                     background=ttk.Style(self).lookup("TFrame", "background"))
         self.body_canvas.grid(row=0, column=0, sticky="nsew")
         self.body_scrollbar = ttk.Scrollbar(self.body_area, orient="vertical",
                                             command=self.body_canvas.yview)
         self.body_scrollbar.grid(row=0, column=1, sticky="ns")
         self.body_canvas.configure(yscrollcommand=self.body_scrollbar.set)
-        self.body = ttk.Frame(self.body_canvas)
+        self.body = ttk.Frame(self.body_canvas, padding=(4, 0, 16, 8))
         self.body_window = self.body_canvas.create_window((0, 0), window=self.body, anchor="nw")
         self.body.bind("<Configure>", self._update_scroll_region)
         self.body_canvas.bind("<Configure>", self._resize_body)
         self.bind_all("<MouseWheel>", self._scroll_body)
-        self.footer = ttk.Frame(self)
-        self.footer.pack(fill="x", pady=(12, 0))
 
     def _update_scroll_region(self, _event=None):
         self.body_canvas.configure(scrollregion=self.body_canvas.bbox("all"))
@@ -295,46 +284,53 @@ class Screen(ttk.Frame):
     def _scroll_body(self, event):
         widget = event.widget
         while widget is not None:
-            if widget == self.body:
+            if widget in (self.body, self.body_canvas):
                 self.body_canvas.yview_scroll(-int(event.delta / 120), "units")
                 break
             widget = getattr(widget, "master", None)
+
+    def scroll_top(self):
+        self.body_canvas.yview_moveto(0)
 
     def destroy(self):
         self.unbind_all("<MouseWheel>")
         super().destroy()
 
-    def add_button(self, text, command, disabled=False):
-        b = ttk.Button(self.footer, text=text, command=command)
-        b.pack(side="right", padx=4)
+    def add_button(self, text, command, disabled=False, primary=False):
+        b = ttk.Button(self.footer, text=text, command=command,
+                       style="Accent.TButton" if primary else "TButton")
+        b.pack(side="right", padx=(8, 0))
         if disabled:
             b.state(["disabled"])
         return b
 
     def label(self, parent, text, **kw):
+        """A left-aligned, auto-wrapping label. Pack it with fill="x"."""
         kw.setdefault("wraplength", WRAP)
         kw.setdefault("justify", "left")
-        return ttk.Label(parent, text=text, **kw)
+        kw.setdefault("anchor", "w")
+        return autowrap(ttk.Label(parent, text=text, **kw))
 
 class QuizFrame(ttk.Frame):
     """One multiple-choice question at a time with immediate feedback.
     questions: list of dict(q, options, answer, explanation, tag=None)
-    on_done(results): results is a list of (tag, was_correct)."""
+    on_done(results): results is a list of (tag, was_correct).
+    on_show(): optional, called each time a new question is shown."""
 
-    def __init__(self, parent, questions, on_done):
+    def __init__(self, parent, questions, on_done, on_show=None):
         super().__init__(parent)
-        self.questions, self.on_done = questions, on_done
+        self.questions, self.on_done, self.on_show = questions, on_done, on_show
         self.i, self.results = 0, []
         self.var = tk.IntVar(value=-1)
         self.counter = ttk.Label(self, style="Sub.TLabel")
         self.counter.pack(anchor="w")
-        self.qlabel = ttk.Label(self, wraplength=WRAP, justify="left", style="Q.TLabel")
-        self.qlabel.pack(anchor="w", pady=(4, 10))
+        self.qlabel = autowrap(ttk.Label(self, wraplength=WRAP, justify="left", anchor="w", style="Q.TLabel"))
+        self.qlabel.pack(fill="x", pady=(4, 10))
         self.opts = ttk.Frame(self)
         self.opts.pack(fill="x")
-        self.feedback = ttk.Label(self, wraplength=WRAP, justify="left")
-        self.feedback.pack(anchor="w", pady=10)
-        self.btn = ttk.Button(self)
+        self.feedback = autowrap(ttk.Label(self, wraplength=WRAP, justify="left", anchor="w"))
+        self.feedback.pack(fill="x", pady=10)
+        self.btn = ttk.Button(self, style="Accent.TButton")
         self.btn.pack(anchor="e")
         self.show()
 
@@ -346,13 +342,18 @@ class QuizFrame(ttk.Frame):
             w.destroy()
         self.var.set(-1)
         self.radios = []
+        bg = ttk.Style(self).lookup("TFrame", "background")
         for idx, text in enumerate(q["options"]):
             r = tk.Radiobutton(self.opts, text=f"{chr(65 + idx)}. {text}", variable=self.var, value=idx,
-                               anchor="w", justify="left", wraplength=WRAP - 30, padx=6, pady=3)
-            r.pack(fill="x", anchor="w")
+                               anchor="w", justify="left", wraplength=WRAP - 30, padx=6, pady=4,
+                               background=bg, activebackground=bg, highlightthickness=0)
+            autowrap(r, margin=40)
+            r.pack(fill="x")
             self.radios.append(r)
         self.feedback.config(text="")
         self.btn.config(text="Submit", command=self.submit)
+        if self.on_show:
+            self.on_show()
 
     def submit(self):
         choice = self.var.get()
@@ -366,11 +367,11 @@ class QuizFrame(ttk.Frame):
             r.config(state="disabled")
             base = f"{chr(65 + idx)}. {q['options'][idx]}"
             if idx == q["answer"]:
-                r.config(text="\u2713 " + base, disabledforeground="#1a7f37")
+                r.config(text="✓ " + base, disabledforeground=GREEN)
             elif idx == choice:
-                r.config(text="\u2717 " + base, disabledforeground="#c62828")
+                r.config(text="✗ " + base, disabledforeground=RED)
         head = "Correct! " if ok else f"Not quite. The correct answer is {chr(65 + q['answer'])}. "
-        self.feedback.config(text=head + q["explanation"], foreground="#1a7f37" if ok else "#c62828")
+        self.feedback.config(text=head + q["explanation"], foreground=GREEN if ok else RED)
         last = self.i == len(self.questions) - 1
         self.btn.config(text="Finish" if last else "Next question", command=self.advance)
 
@@ -386,43 +387,43 @@ class IntroScreen(Screen):
     def __init__(self, app):
         super().__init__(app, "Welcome to the AES Implementation Lab")
         self.i = 0
-        self.title_lbl = ttk.Label(self.body, style="Q.TLabel")
-        self.title_lbl.pack(anchor="w", pady=(10, 8))
-        self.text_lbl = self.label(self.body, "", font=("Helvetica", 13))
-        self.text_lbl.pack(anchor="w")
-        aes_image_path = Path(__file__).parent / "assets" / "aes_rounds_flowchart.png"
-        cache_image_path = Path(__file__).parent / "assets" / "cache_state.png"
-        key_image_path = Path(__file__).parent / "assets" / "key_recovery.png"
-        self.aes_image = tk.PhotoImage(file=aes_image_path).subsample(2, 2)
-        self.aes_image_lbl = ttk.Label(self.body, image=self.aes_image)
-        self.cache_image = tk.PhotoImage(file=cache_image_path).subsample(2, 2)
-        self.cache_image_lbl = ttk.Label(self.body, image=self.cache_image)
-        self.key_image = tk.PhotoImage(file=key_image_path).subsample(2, 2)
-        self.key_image_lbl = ttk.Label(self.body, image=self.key_image)
-        self.next_btn = self.add_button("Next", self.next)
+        self.images = {}              # keep references so Tk doesn't garbage-collect them
+        for slide in INTRO:
+            for block in slide:
+                if block[0] == "img":
+                    _, name, factor = block
+                    img = tk.PhotoImage(file=ASSETS / name)
+                    self.images[name] = img.subsample(factor, factor) if factor > 1 else img
+        self.page_lbl = ttk.Label(self.body, style="Sub.TLabel")
+        self.page_lbl.pack(anchor="w")
+        self.slide = ttk.Frame(self.body)
+        self.slide.pack(fill="both", expand=True)
+        self.next_btn = self.add_button("Next", self.next, primary=True)
         self.back_btn = self.add_button("Back", self.back)
         self.refresh()
 
     def refresh(self):
-        t, *body = INTRO[self.i]
-        self.title_lbl.config(text=f"{self.i + 1}/{len(INTRO)}  {t}")
-        self.text_lbl.config(text="\n\n".join(body))
-        match(self.i):
-            case 1:
-                self.aes_image_lbl.pack(anchor="w", pady=(12, 0))
-            case 2:
-                try:
-                    self.aes_image_lbl.pack_forget()
-                except:
-                    print("No aes image to forget")
-                self.cache_image_lbl.pack(anchor="w", pady=(12, 0))
-                self.key_image_lbl.pack(anchor="w", pady=(12, 0))
-            case _:
-                self.aes_image_lbl.pack_forget()
-                self.cache_image_lbl.pack_forget()
-                self.key_image_lbl.pack_forget()
+        for w in self.slide.winfo_children():
+            w.destroy()
+        self.page_lbl.config(text=f"Page {self.i + 1} of {len(INTRO)}")
+        first = True
+        for block in INTRO[self.i]:
+            kind = block[0]
+            if kind == "h":
+                ttk.Label(self.slide, text=block[1], style="Q.TLabel").pack(anchor="w", pady=(4 if first else 16, 6))
+            elif kind == "p":
+                self.label(self.slide, block[1], style="Body.TLabel").pack(fill="x", pady=(0, 10))
+            elif kind == "ul":
+                lst = ttk.Frame(self.slide)
+                lst.pack(fill="x", pady=(0, 10))
+                for item in block[1]:
+                    self.label(lst, "•  " + item, style="Body.TLabel").pack(fill="x", padx=(24, 0), pady=1)
+            elif kind == "img":
+                ttk.Label(self.slide, image=self.images[block[1]]).pack(pady=(4, 14))
+            first = False
         self.back_btn.state(["!disabled"] if self.i else ["disabled"])
         self.next_btn.config(text="Start designing" if self.i == len(INTRO) - 1 else "Next")
+        self.scroll_top()
 
     def next(self):
         if self.i == len(INTRO) - 1:
@@ -439,7 +440,7 @@ class DesignScreen(Screen):
     def __init__(self, app):
         super().__init__(app, "Design your AES implementation")
         self.status = self.label(self, "", style="Sub.TLabel")
-        self.status.pack(anchor="w", before=self.footer)
+        self.status.pack(side="bottom", fill="x", pady=(10, 0), before=self.body_area)
         self.show_next()
 
     def show_next(self):
@@ -452,19 +453,20 @@ class DesignScreen(Screen):
             return
         info = DECISION_INFO[d]
         ttk.Label(self.body, text=info["title"], style="Q.TLabel").pack(anchor="w")
-        self.label(self.body, info["prompt"]).pack(anchor="w", pady=(0, 10))
+        self.label(self.body, info["prompt"], style="Body.TLabel").pack(fill="x", pady=(4, 10))
         for value in (True, False):
             name, desc = info[value]
-            box = ttk.LabelFrame(self.body, text=name, padding=10)
+            box = ttk.LabelFrame(self.body, text=name, padding=12)
             box.pack(fill="x", pady=6)
-            self.label(box, desc, wraplength=640).pack(side="left", anchor="w")
-            ttk.Button(box, text="Choose", command=lambda v=value, dd=d: self.choose(dd, v)).pack(side="right")
+            ttk.Button(box, text="Choose", command=lambda v=value, dd=d: self.choose(dd, v)).pack(side="right", padx=(16, 0))
+            self.label(box, desc).pack(side="left", fill="x", expand=True)
         picked = [DECISION_INFO[k][v][0] for k, v in ch.items()]
-        skipped = [DECISION_INFO[k]["title"].split(": ")[1] for k in skipped_decisions(ch)]
+        skipped = [DECISION_INFO[k]["name"] for k in skipped_decisions(ch)]
         text = "Your choices so far: " + (", ".join(picked) if picked else "none")
         if skipped:
             text += f"\nSkipped (not compatible with earlier choices): {', '.join(skipped)}"
         self.status.config(text=text)
+        self.scroll_top()
 
     def choose(self, d, value):
         self.game.choices[d] = value
@@ -479,7 +481,7 @@ class PredictScreen(Screen):
             q = PREDICTION_QUESTIONS[(d, self.game.choices[d])].copy()
             q["tag"] = d
             qs.append(q)
-        QuizFrame(self.body, qs, self.done).pack(fill="both", expand=True)
+        QuizFrame(self.body, qs, self.done, on_show=self.scroll_top).pack(fill="both", expand=True)
 
     def done(self, results):
         self.game.predictions = results
@@ -491,36 +493,41 @@ class PerformanceScreen(Screen):
     def __init__(self, app):
         super().__init__(app, "Performance test")
         self.label(self.body, "Enter a secret key, then watch your AES system encrypt each message "
-                              "(AES-ECB). Encryption time depends on your design choices.").pack(anchor="w")
+                              "(AES-ECB). Encryption time depends on your design choices.",
+                   style="Body.TLabel").pack(fill="x")
         row = ttk.Frame(self.body)
-        row.pack(anchor="w", pady=8)
+        row.pack(anchor="w", pady=12)
         ttk.Label(row, text="Secret key:").pack(side="left")
         self.entry = ttk.Entry(row, width=24)
-        self.entry.pack(side="left", padx=6)
-        self.start_btn = ttk.Button(row, text="Start test", command=self.start)
+        self.entry.pack(side="left", padx=8)
+        self.entry.bind("<Return>", lambda _e: self.start())
+        self.entry.focus_set()
+        self.start_btn = ttk.Button(row, text="Start test", command=self.start, style="Accent.TButton")
         self.start_btn.pack(side="left")
-        self.note = ttk.Label(row, text="", foreground="#c62828")
+        self.note = ttk.Label(row, text="", foreground=RED)
         self.note.pack(side="left", padx=8)
 
         cols = ttk.Frame(self.body)
         cols.pack(fill="both", expand=True, pady=10)
-        self.left = ttk.LabelFrame(cols, text="Plaintext messages", padding=8)
+        self.left = ttk.LabelFrame(cols, text="Plaintext messages", padding=10)
         self.left.pack(side="left", fill="both", expand=True)
         mid = ttk.Frame(cols)
-        mid.pack(side="left", padx=12)
+        mid.pack(side="left", padx=16)
         self.canvas = tk.Canvas(mid, width=190, height=150, bg="black", highlightthickness=0)
         self.canvas.pack()
         self.box_text = self.canvas.create_text(95, 75, text="Your AES system", fill="white",
-                                                font=("Helvetica", 12, "bold"), width=170)
+                                                font=(tkfont.nametofont("TkDefaultFont").actual("family"), 12, "bold"), width=170, justify="center")
         self.bar = ttk.Progressbar(mid, length=190, maximum=100)
-        self.bar.pack(pady=6)
-        self.right = ttk.LabelFrame(cols, text="Ciphertext (hex)", padding=8)
+        self.bar.pack(pady=8)
+        self.right = ttk.LabelFrame(cols, text="Ciphertext (hex)", padding=10)
         self.right.pack(side="left", fill="both", expand=True)
         self.result = ttk.Label(self.body, text="", style="Q.TLabel")
-        self.result.pack(anchor="w")
-        self.next_btn = self.add_button("Run cache attack", self.app.next_screen, disabled=True)
+        self.result.pack(pady=(8, 0))
+        self.next_btn = self.add_button("Run cache attack", self.app.next_screen, disabled=True, primary=True)
 
     def start(self):
+        if self.start_btn.instate(["disabled"]):
+            return
         text = self.entry.get().strip()
         if not text:
             self.note.config(text="Please enter a key.")
@@ -540,7 +547,7 @@ class PerformanceScreen(Screen):
             self.canvas.itemconfig(self.box_text, text="Done")
             self.next_btn.state(["!disabled"])
             return
-        ttk.Label(self.left, text=MESSAGES[self.idx], font=("Courier", 11)).pack(anchor="w", pady=2)
+        ttk.Label(self.left, text=MESSAGES[self.idx], style="Mono.TLabel").pack(anchor="w", pady=2)
         self.canvas.itemconfig(self.box_text, text="Encrypting...")
         self.elapsed = 0.0
         self.tick()
@@ -555,7 +562,7 @@ class PerformanceScreen(Screen):
 
     def finish_message(self):
         ct = encrypt(self.game.key, MESSAGES[self.idx]).hex()
-        ttk.Label(self.right, text=f"{ct[:16]}\u2026{ct[-8:]}", font=("Courier", 11)).pack(anchor="w", pady=2)
+        ttk.Label(self.right, text=f"{ct[:16]}…{ct[-8:]}", style="Mono.TLabel").pack(anchor="w", pady=2)
         self.game.total_time += self.delay
         self.idx += 1
         self.bar["value"] = 0
@@ -568,22 +575,23 @@ class AttackScreen(Screen):
         super().__init__(app, "Simulated cache timing attack")
         self.traces = traces_needed(self.game.choices)
         self.game.traces = self.traces
-        self.label(self.body, "The attacker will attempt to collect enough traces to recover your secret key.").pack(anchor="w")
+        self.label(self.body, "The attacker will attempt to collect enough traces to recover your secret key.",
+                   style="Body.TLabel").pack(fill="x")
         self.counter = ttk.Label(self.body, text="Traces collected: 0", style="Q.TLabel")
-        self.counter.pack(anchor="w", pady=(14, 4))
-        self.bar = ttk.Progressbar(self.body, length=500, maximum=self.STEPS)
-        self.bar.pack(anchor="w")
-        self.outcome = self.label(self.body, "", font=("Helvetica", 13, "bold"))
-        self.outcome.pack(anchor="w", pady=14)
-        self.why = self.label(self.body, "")
-        self.why.pack(anchor="w")
-        self.next_btn = self.add_button("See results", self.app.next_screen, disabled=True)
+        self.counter.pack(anchor="w", pady=(14, 6))
+        self.bar = ttk.Progressbar(self.body, maximum=self.STEPS)
+        self.bar.pack(fill="x")
+        self.outcome = self.label(self.body, "", style="Outcome.TLabel")
+        self.outcome.pack(fill="x", pady=14)
+        self.why = self.label(self.body, "", style="Body.TLabel")
+        self.why.pack(fill="x")
+        self.next_btn = self.add_button("See results", self.app.next_screen, disabled=True, primary=True)
         self.step = 0
         self.after(500, self.run)
 
     def run(self):
         self.step += 1
-        target = min(self.traces, NO_ATTACK_CAP)
+        target = NO_ATTACK_CAP if self.traces is None else min(self.traces, NO_ATTACK_CAP)
         self.bar["value"] = self.step
         self.counter.config(text=f"Traces collected: {int(target * self.step / self.STEPS):,}")
         if self.step < self.STEPS:
@@ -592,15 +600,12 @@ class AttackScreen(Screen):
             self.conclude()
 
     def conclude(self):
-        if self.traces is None:
+        if self.traces is None or self.traces > NO_ATTACK_CAP:
             self.outcome.config(text=f"Attack failed: key NOT recovered after {NO_ATTACK_CAP:,} traces.",
-                                foreground="#1a7f37")
-        elif self.traces > NO_ATTACK_CAP:
-            self.outcome.config(text=f"Attack failed: key NOT recovered after {NO_ATTACK_CAP:,} traces.",
-                                foreground="#1a7f37")
+                                foreground=GREEN)
         else:
-            self.outcome.config(text=f"Key recovered after {self.traces:,} traces: {self.game.key.hex()}",
-                                foreground="#c62828")
+            self.outcome.config(text=f"Key recovered after {self.traces:,} traces. Your Key as hexcode {self.game.key.hex()}",
+                                foreground=RED)
         self.why.config(text=explain_attack(self.game.choices, self.traces))
         self.next_btn.state(["!disabled"])
 
@@ -608,20 +613,19 @@ class ResultsScreen(Screen):
     def __init__(self, app):
         super().__init__(app, "Your results")
         g = self.game
-        box = ttk.LabelFrame(self.body, text="Your implementation choices", padding=10)
+        box = ttk.LabelFrame(self.body, text="Your implementation choices", padding=12)
         box.pack(fill="x")
         for d in DECISIONS:
             if d in g.choices:
                 v = g.choices[d]
                 perf, sec = EFFECTS[(d, v)]
-                ttk.Label(box, text=DECISION_INFO[d][v][0], font=("Helvetica", 12, "bold")).pack(anchor="w", pady=(6, 0))
-                self.label(box, f"Performance: {perf}\nCache security: {sec}").pack(anchor="w", padx=14)
+                ttk.Label(box, text=DECISION_INFO[d][v][0], style="Bold.TLabel").pack(anchor="w", pady=(8, 2))
+                self.label(box, f"Performance: {perf}\nCache security: {sec}").pack(fill="x", padx=(16, 0))
             else:
-                name = DECISION_INFO[d]["title"].split(": ")[1]
-                self.label(box, f"{name}: skipped (not applicable to your design)",
-                           style="Sub.TLabel").pack(anchor="w", pady=(6, 0))
+                self.label(box, f"{DECISION_INFO[d]['name']}: skipped (not applicable to your design)",
+                           style="Sub.TLabel").pack(fill="x", pady=(8, 0))
         correct = sum(ok for _, ok in g.predictions)
-        total = ttk.LabelFrame(self.body, text="Overall", padding=10)
+        total = ttk.LabelFrame(self.body, text="Overall", padding=12)
         total.pack(fill="x", pady=12)
         if g.traces is None:
             t = "no practical attack found"
@@ -632,24 +636,29 @@ class ResultsScreen(Screen):
         self.label(total, f"Total encryption time: {g.total_time:.1f} s\n"
                           f"Cache timing attack: {t}\n"
                           f"Prediction questions correct: {correct} of {len(g.predictions)}",
-                   font=("Helvetica", 12)).pack(anchor="w")
-        self.label(self.body, "", style="Sub.TLabel").pack(anchor="w") # There was a placeholder results summary here, didn't know what exactly to put
-        self.add_button("Final assessment", self.app.next_screen)
+                   style="Body.TLabel").pack(fill="x")
+        self.label(self.body, "Want to see how a different design performs? Try a new design, "
+                              "or continue to the final assessment when you're ready.",
+                   style="Sub.TLabel").pack(fill="x")
+        self.add_button("Final assessment", self.app.next_screen, primary=True)
+        self.add_button("Try a new design", self.app.redesign)
 
 class AssessmentScreen(Screen):
     def __init__(self, app):
         super().__init__(app, "Final assessment")
-        self.quiz = QuizFrame(self.body, ASSESSMENT, self.done)
+        self.quiz = QuizFrame(self.body, ASSESSMENT, self.done, on_show=self.scroll_top)
         self.quiz.pack(fill="both", expand=True)
 
     def done(self, results):
         score, total = sum(ok for _, ok in results), len(results)
         self.game.assessment_score, self.game.assessment_total = score, total
         self.quiz.destroy()
-        ttk.Label(self.body, text=f"You scored {score} / {total}", style="Q.TLabel").pack(anchor="w", pady=20)
-        self.label(self.body, "Thank you for playing our game!. You can now play again if you would like!").pack(anchor="w")
+        ttk.Label(self.body, text=f"You scored {score} / {total}", style="Title.TLabel").pack(pady=(40, 12))
+        ttk.Label(self.body, text="Thank you for playing our game! You can play again if you would like.",
+                  style="Body.TLabel").pack()
+        self.scroll_top()
         self.add_button("Quit", self.app.destroy)
-        self.add_button("Play again", self.app.restart)
+        self.add_button("Play again", self.app.restart, primary=True)
 
 #  -------------------- app --------------------
 class App(tk.Tk):
@@ -659,15 +668,30 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("AES Implementation Lab")
-        self.geometry("900x700")
+        self.geometry("960x760")
         self.minsize(820, 620)
-        style = ttk.Style(self)
-        style.configure("Title.TLabel", font=("Helvetica", 18, "bold"))
-        style.configure("Q.TLabel", font=("Helvetica", 13, "bold"))
-        style.configure("Sub.TLabel", foreground="gray40")
+        self._setup_style()
         self.game = GameState()
         self.index, self.current = -1, None
         self.next_screen()
+
+    def _setup_style(self):
+        # Use the platform's default font everywhere (Segoe UI on Windows, SF on macOS, etc.).
+        for name in ("TkDefaultFont", "TkTextFont"):
+            tkfont.nametofont(name).configure(size=11)
+        tkfont.nametofont("TkFixedFont").configure(size=11)
+        family = tkfont.nametofont("TkDefaultFont").actual("family")
+        style = ttk.Style(self)
+        style.configure("Title.TLabel", font=(family, 20, "bold"))
+        style.configure("Q.TLabel", font=(family, 14, "bold"))
+        style.configure("Bold.TLabel", font=(family, 11, "bold"))
+        style.configure("Body.TLabel", font=(family, 12))
+        style.configure("Outcome.TLabel", font=(family, 13, "bold"))
+        style.configure("Sub.TLabel", foreground="gray40")
+        style.configure("Mono.TLabel", font="TkFixedFont")
+        style.configure("TLabelframe.Label", font=(family, 11, "bold"))
+        style.configure("TButton", padding=(10, 4))
+        style.configure("Accent.TButton", padding=(10, 4), font=(family, 11, "bold"))
 
     def next_screen(self):
         if self.current is not None:
@@ -675,6 +699,12 @@ class App(tk.Tk):
         self.index += 1
         self.current = self.FLOW[self.index](self)
         self.current.pack(fill="both", expand=True)
+
+    def redesign(self):
+        """Clear the current design and go back to the first design decision."""
+        self.game = GameState()
+        self.index = self.FLOW.index(DesignScreen) - 1
+        self.next_screen()
 
     def restart(self):
         self.game = GameState()
