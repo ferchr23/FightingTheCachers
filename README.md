@@ -52,6 +52,17 @@ python main.py
 
 Keep the `assets` folder next to `main.py`. The intro slides load their images from it.
 
+## Playing the game
+
+Go through each of the 7 steps in the game:
+1. Read a short intro for context on AES and Cache Timing Attacks
+2. Design your AES implementation by making a few design choices
+3. Make some predictions on how your implementation will perform
+4. Enter a secret key to start a Performance Test of your implementation
+5. Observe the results of a simulated cache timing attack, which is performed automatically
+6. Review the results of your implementation, choose to test a new design or move to the final assessment
+7. Take a final assessment, proving your understanding of the topic
+
 ### Troubleshooting
 
 - **`ModuleNotFoundError: No module named 'Crypto'`**: the requirements aren't installed in the Python you're using. Activate your virtual environment, or run step 2 again.
