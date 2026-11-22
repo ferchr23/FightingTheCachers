@@ -61,6 +61,7 @@ DECISION_INFO = {
         "prompt": "Determine how your system handles the SubBytes operation. Choose carefully...",
         True: ("Use S-boxes for SubBytes", "Precompute the nonlinear substitutions applied in SubBytes when setting up AES. The substitutions are stored as a lookup table in memory. This lookup table, called an S-box, is 256 bytes in size and can fit into 4 lines of the cache. Which value is accessed in the S-box depends on the input value, which is a combination of the secret round key with either the plaintext message or the output of a previous round."),
         False: ("Compute SubBytes Manually", "The substitutions applied in SubBytes can be computed numerically as an inversion in a Galois Field. Compared to the simpler computations in ShiftRows, MixColumns, and AddRoundKey, the inversion over a Galois Field is the most complicated part of an AES round."),
+        "skipped": "S-boxes should never be skipped. If this message is shown, something is wrong...",
     },
     "ttable": {
         "title": "Decision 2: To T or not to T...",
@@ -68,6 +69,7 @@ DECISION_INFO = {
         "prompt": "Will you choose to use T-tables or stick with the traditional route?",
         True: ("Use T-tables for Each Round", "Similar to how S-boxes precompute the substitutions in SubBytes, T-tables precompute most of an entire round of AES. SubBytes, ShiftRows, and MixColumns are replaced with a memory table lookup, leaving only AddRoundKey to be performed in real time. Just as with S-boxes, the accessed value of the T-table lookup depends on the round key and either the plaintext message or the output of the previous round. To include the computation of ShiftRows and MixColumns, each T-table is 4 times the size of an S-box. This means each one takes up 16 cache lines instead of an S-box’s 4 lines."),
         False: ("Perform Rounds Normally", "Perform the computations for ShiftRows and MixColumns on the fly in each round. ShiftRows is a simple reordering of bytes, and MixColumns is a matrix multiplication with a fixed array."),
+        "skipped": "T-tables are incompatible with your current design; you have chosen to not use S-boxes, which T-tables inherently build upon.",
     },
     "masking": {
         "title": "Decision 3: Mask off, hold up Mask on?",
@@ -75,6 +77,7 @@ DECISION_INFO = {
         "prompt": "Is masking what you need, or is it better to keep things the same? You decide.",
         True: ("Use Boolean Masking for Memory Accesses", "Boolean masking was originally created as a power-analysis countermeasure. Every intermediate value in AES is XORed with a random mask. All lookup tables are recomputed based on the mask, so any single lookup is uniformly random. This does not necessarily prevent cache attacks, but it does obscure the absolute index of lookups. Applying a mask requires pseudorandom values to be generated and each lookup table to be recomputed, which adds computation. Masks can be reused for multiple lookups to reduce this computation; however, the lookups are then no longer uniformly random."),
         False: ("Perform Memory Accesses as Usual", "All accesses to data in the cache are performed normally, with no masking."),
+        "skipped": "Boolean Masking is incompatible with your current design; you have chosen to compute SubBytes manually, with no memory accesses. Without memory accesses, there is no need to use Boolean Masking.", 
     },
     "hw": {
         "title": "Decision 4: Chip decisions (and we're not talking Doritos vs. Lay's)",
@@ -82,6 +85,7 @@ DECISION_INFO = {
         "prompt": "They finally released that fancy new chip. I hope your computer can handle it...",
         True: ("Use a Special Instruction Chip", "Use a specialized chip that has been designed to execute AES efficiently. Examples include Intel's AES-NI and ARM's Crypto extensions, each of which provides dedicated instructions to execute AES round operations efficiently. Each of the round operations is implemented directly in hardware rather than with general-purpose arithmetic logic and instructions."),
         False: ("Use a Standard Processor", "Use a general-purpose processor to run your AES implementation. Some operations required in AES, like XOR, shifting, and data movement, are handled by existing logic and instructions. Other operations, like the Galois Field arithmetic of SubBytes and MixColumns, are not commonly supported by ALUs and must be implemented as a combination of smaller instructions. Using more instructions generally increases the runtime of a program."),
+        "skipped": "A Special Instruction Chip is incompatible with your current design; you have chosen to precompute SubBytes, ShiftRows, and MixColumns in T-tables. These are the AES round operations that are typically optimized for on these chips.",
     },
 }
 
@@ -161,17 +165,17 @@ TRACES_TTABLE = 2**13       # traces to recover key: T-tables
 MASKING_COMPONENT = 2  # (https://scispace.com/pdf/towards-sound-approaches-to-counteract-power-analysis-2ahx28uuq3.pdf), (https://iacr.org/submit/files/slides/2023/crypto/crypto2023/4/slides.pdf) Masking exponentially increases the noise in leakages, we are simulating a first-order masking which splits values into a mask and a masked value, creating 2 shares for each value. This means that the amount of noise in the system is squared by splitting the values into 2 shares. So we square the number of traces needed for the attack to account for this increase in noise
 NO_ATTACK_CAP = 23_726_566   # traces the simulated attacker can gather before the lifetime of the key is over (number of encryptions before the key must be changed) (https://www.ietf.org/archive/id/draft-ietf-tls-rfc8446bis-13.html section 5.5, defines a key lifetime of 2^24.5 records for AES-GCM, which is 23,726,566.4, round down to 23,726,566)
 
-def is_available(decision, choices):
+def to_skip(decision, choices):
     """T-tables build on S-box tables; masking protects table lookups. Specialized Hardware really needs computation to be done, not T-tables."""
     if decision in ("ttable", "masking"):
-        return choices.get("sbox") is True
+        return choices.get("sbox") is False
     if decision == "hw":
-        return choices.get("ttable") is not True
-    return True
+        return choices.get("ttable") is True
+    return False
 
 def next_decision(choices):
     for d in DECISIONS:
-        if d not in choices and is_available(d, choices):
+        if d not in choices:
             return d
     return None
 
@@ -179,7 +183,7 @@ def skipped_decisions(choices):
     """Decisions already passed over because they conflict with earlier choices."""
     nxt = next_decision(choices)
     upto = DECISIONS.index(nxt) if nxt else len(DECISIONS)
-    return [d for d in DECISIONS[:upto] if d not in choices and not is_available(d, choices)]
+    return [d for d in DECISIONS[:upto] if d not in choices and to_skip(d, choices)]
 
 def per_message_delay(choices):
     """Set the length of per message encryption delay to simulate processing time for each design option."""
@@ -452,14 +456,22 @@ class DesignScreen(Screen):
             self.app.next_screen()
             return
         info = DECISION_INFO[d]
+        skip = to_skip(d, ch)
         ttk.Label(self.body, text=info["title"], style="Q.TLabel").pack(anchor="w")
         self.label(self.body, info["prompt"], style="Body.TLabel").pack(fill="x", pady=(4, 10))
         for value in (True, False):
             name, desc = info[value]
             box = ttk.LabelFrame(self.body, text=name, padding=12)
             box.pack(fill="x", pady=6)
-            ttk.Button(box, text="Choose", command=lambda v=value, dd=d: self.choose(dd, v)).pack(side="right", padx=(16, 0))
+            if value == True and skip:
+                ttk.Button(box, text="Choose", state="disable").pack(side="right", padx=(16,0))
+            else:
+                ttk.Button(box, text="Choose", command=lambda v=value, dd=d: self.choose(dd, v)).pack(side="right", padx=(16, 0))
             self.label(box, desc).pack(side="left", fill="x", expand=True)
+        if skip:
+            skip_box = ttk.LabelFrame(self.body, text="Skipped", padding=12)
+            skip_box.pack(fill="x", pady=6)
+            self.label(skip_box, info["skipped"], style="Body.TLabel").pack(fill="x", pady=(4,10))
         picked = [DECISION_INFO[k][v][0] for k, v in ch.items()]
         skipped = [DECISION_INFO[k]["name"] for k in skipped_decisions(ch)]
         text = "Your choices so far: " + (", ".join(picked) if picked else "none")
