@@ -36,7 +36,7 @@ INTRO = [
                 "AddRoundKey: the application of the secret key"]),
         ("p", "These four steps make up a “round” of AES, and many rounds are performed in series to encrypt a single block of the message. The number of rounds depends on the length of your secret key. For example, AES-128 uses a 128-bit secret key and has 10 rounds, while AES-256 uses a 256-bit secret key and has 14 rounds."),
         ("p", "The AES algorithm is defined by these four steps and the way they come together in a series of rounds. Every implementation of AES, whether in software or in hardware, performs these steps. How it performs them is where implementations come into their own."),
-        ("img", "aes_rounds_flowchart.png", 2),
+        ("img", "aes_rounds_flowchart.png", 1),
     ],
     [
         ("h", "What is the performance of an AES implementation?"),
@@ -242,11 +242,51 @@ def encrypt(key, message):
 # ------------------- ui helpers ---------------------
 WRAP = 780            # starting wrap width; labels re-wrap to the window width once laid out
 GREEN, RED = "#1a7f37", "#c62828"
+TRIED = "#6a1b9a"      # purple: marks options already used in a tested design
 
 def autowrap(widget, margin=0):
     """Re-wrap a label's text whenever its width changes. Pack/grid it so it fills horizontally."""
     widget.bind("<Configure>", lambda e: widget.configure(wraplength=max(e.width - margin, 100)), add="+")
     return widget
+
+def wrapped_label(parent, text, **kw):
+    """A left-aligned, auto-wrapping label. Pack it with fill="x"."""
+    kw.setdefault("wraplength", WRAP)
+    kw.setdefault("justify", "left")
+    kw.setdefault("anchor", "w")
+    return autowrap(ttk.Label(parent, text=text, **kw))
+
+def intro_images(app):
+    """Load the intro slide images once and cache them on the app (Tk needs the references kept)."""
+    if not hasattr(app, "_intro_images"):
+        app._intro_images = {}
+        for slide in INTRO:
+            for block in slide:
+                if block[0] == "img":
+                    _, name, factor = block
+                    img = tk.PhotoImage(master=app, file=ASSETS / name)
+                    app._intro_images[name] = img.subsample(factor, factor) if factor > 1 else img
+    return app._intro_images
+
+def render_intro_slide(parent, index, images):
+    """Draw intro slide `index` into `parent` (any existing children are removed first)."""
+    for w in parent.winfo_children():
+        w.destroy()
+    first = True
+    for block in INTRO[index]:
+        kind = block[0]
+        if kind == "h":
+            ttk.Label(parent, text=block[1], style="Q.TLabel").pack(anchor="w", pady=(4 if first else 16, 6))
+        elif kind == "p":
+            wrapped_label(parent, block[1], style="Body.TLabel").pack(fill="x", pady=(0, 10))
+        elif kind == "ul":
+            lst = ttk.Frame(parent)
+            lst.pack(fill="x", pady=(0, 10))
+            for item in block[1]:
+                wrapped_label(lst, "•  " + item, style="Body.TLabel").pack(fill="x", padx=(24, 0), pady=1)
+        elif kind == "img":
+            ttk.Label(parent, image=images[block[1]]).pack(pady=(4, 14))
+        first = False
 
 class Screen(ttk.Frame):
     def __init__(self, app, title):
@@ -310,10 +350,7 @@ class Screen(ttk.Frame):
 
     def label(self, parent, text, **kw):
         """A left-aligned, auto-wrapping label. Pack it with fill="x"."""
-        kw.setdefault("wraplength", WRAP)
-        kw.setdefault("justify", "left")
-        kw.setdefault("anchor", "w")
-        return autowrap(ttk.Label(parent, text=text, **kw))
+        return wrapped_label(parent, text, **kw)
 
 class QuizFrame(ttk.Frame):
     """One multiple-choice question at a time with immediate feedback.
@@ -391,13 +428,7 @@ class IntroScreen(Screen):
     def __init__(self, app):
         super().__init__(app, "Welcome to the AES Implementation Lab")
         self.i = 0
-        self.images = {}              # keep references so Tk doesn't garbage-collect them
-        for slide in INTRO:
-            for block in slide:
-                if block[0] == "img":
-                    _, name, factor = block
-                    img = tk.PhotoImage(file=ASSETS / name)
-                    self.images[name] = img.subsample(factor, factor) if factor > 1 else img
+        self.images = intro_images(app)
         self.page_lbl = ttk.Label(self.body, style="Sub.TLabel")
         self.page_lbl.pack(anchor="w")
         self.slide = ttk.Frame(self.body)
@@ -407,24 +438,8 @@ class IntroScreen(Screen):
         self.refresh()
 
     def refresh(self):
-        for w in self.slide.winfo_children():
-            w.destroy()
         self.page_lbl.config(text=f"Page {self.i + 1} of {len(INTRO)}")
-        first = True
-        for block in INTRO[self.i]:
-            kind = block[0]
-            if kind == "h":
-                ttk.Label(self.slide, text=block[1], style="Q.TLabel").pack(anchor="w", pady=(4 if first else 16, 6))
-            elif kind == "p":
-                self.label(self.slide, block[1], style="Body.TLabel").pack(fill="x", pady=(0, 10))
-            elif kind == "ul":
-                lst = ttk.Frame(self.slide)
-                lst.pack(fill="x", pady=(0, 10))
-                for item in block[1]:
-                    self.label(lst, "•  " + item, style="Body.TLabel").pack(fill="x", padx=(24, 0), pady=1)
-            elif kind == "img":
-                ttk.Label(self.slide, image=self.images[block[1]]).pack(pady=(4, 14))
-            first = False
+        render_intro_slide(self.slide, self.i, self.images)
         self.back_btn.state(["!disabled"] if self.i else ["disabled"])
         self.next_btn.config(text="Start designing" if self.i == len(INTRO) - 1 else "Next")
         self.scroll_top()
@@ -440,9 +455,79 @@ class IntroScreen(Screen):
         self.i -= 1
         self.refresh()
 
+class IntroViewer(tk.Toplevel):
+    """A separate window for re-reading the introduction slides. Use IntroViewer.open(app)."""
+
+    @classmethod
+    def open(cls, app):
+        win = getattr(app, "_intro_viewer", None)
+        if win is not None and win.winfo_exists():
+            win.deiconify()
+            win.lift()
+            win.focus_set()
+        else:
+            app._intro_viewer = cls(app)
+
+    def __init__(self, app):
+        super().__init__(app)
+        self.title("Introduction")
+        self.geometry("820x680")
+        self.minsize(600, 420)
+        self.i = 0
+        self.images = intro_images(app)
+        bg = ttk.Style(self).lookup("TFrame", "background")
+        self.configure(background=bg)
+        outer = ttk.Frame(self, padding=(24, 16, 24, 12))
+        outer.pack(fill="both", expand=True)
+        # Footer first so it stays visible at the bottom.
+        footer = ttk.Frame(outer)
+        footer.pack(side="bottom", fill="x", pady=(10, 0))
+        ttk.Separator(outer).pack(side="bottom", fill="x")
+        self.page_lbl = ttk.Label(footer, style="Sub.TLabel")
+        self.page_lbl.pack(side="left")
+        ttk.Button(footer, text="Close", command=self.destroy).pack(side="right", padx=(8, 0))
+        self.next_btn = ttk.Button(footer, text="Next", command=lambda: self.go(1), style="Accent.TButton")
+        self.next_btn.pack(side="right", padx=(8, 0))
+        self.back_btn = ttk.Button(footer, text="Back", command=lambda: self.go(-1))
+        self.back_btn.pack(side="right", padx=(8, 0))
+        # Scrollable slide area.
+        area = ttk.Frame(outer)
+        area.pack(fill="both", expand=True)
+        area.columnconfigure(0, weight=1)
+        area.rowconfigure(0, weight=1)
+        self.canvas = tk.Canvas(area, borderwidth=0, highlightthickness=0, background=bg)
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+        sb = ttk.Scrollbar(area, orient="vertical", command=self.canvas.yview)
+        sb.grid(row=0, column=1, sticky="ns")
+        self.canvas.configure(yscrollcommand=sb.set)
+        self.slide = ttk.Frame(self.canvas, padding=(4, 0, 16, 8))
+        win = self.canvas.create_window((0, 0), window=self.slide, anchor="nw")
+        self.slide.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(win, width=e.width))
+        # Bound on the Toplevel, so it applies to every widget in this window (and not the main one).
+        self.bind("<MouseWheel>", lambda e: self.canvas.yview_scroll(-int(e.delta / 120), "units"))
+        self.bind("<Left>", lambda e: self.go(-1))
+        self.bind("<Right>", lambda e: self.go(1))
+        self.bind("<Escape>", lambda e: self.destroy())
+        self.refresh()
+
+    def go(self, step):
+        new = self.i + step
+        if 0 <= new < len(INTRO):
+            self.i = new
+            self.refresh()
+
+    def refresh(self):
+        self.page_lbl.config(text=f"Page {self.i + 1} of {len(INTRO)}")
+        render_intro_slide(self.slide, self.i, self.images)
+        self.back_btn.state(["!disabled"] if self.i > 0 else ["disabled"])
+        self.next_btn.state(["!disabled"] if self.i < len(INTRO) - 1 else ["disabled"])
+        self.canvas.yview_moveto(0)
+
 class DesignScreen(Screen):
     def __init__(self, app):
         super().__init__(app, "Design your AES implementation")
+        self.add_button("Info", lambda: IntroViewer.open(app))
         self.status = self.label(self, "", style="Sub.TLabel")
         self.status.pack(side="bottom", fill="x", pady=(10, 0), before=self.body_area)
         self.show_next()
@@ -459,14 +544,20 @@ class DesignScreen(Screen):
         skip = to_skip(d, ch)
         ttk.Label(self.body, text=info["title"], style="Q.TLabel").pack(anchor="w")
         self.label(self.body, info["prompt"], style="Body.TLabel").pack(fill="x", pady=(4, 10))
+        tested = self.app.tested
+        if any((d, v) in tested for v in (True, False)):
+            ttk.Label(self.body, text="Purple buttons mark options you've already tested in a previous design.",
+                      style="Tried.TLabel").pack(anchor="w", pady=(0, 4))
         for value in (True, False):
             name, desc = info[value]
             box = ttk.LabelFrame(self.body, text=name, padding=12)
             box.pack(fill="x", pady=6)
+            style = "Tried.TButton" if (d, value) in tested else "TButton"
             if value == True and skip:
-                ttk.Button(box, text="Choose", state="disable").pack(side="right", padx=(16,0))
+                ttk.Button(box, text="Choose", style=style, state="disable").pack(side="right", padx=(16,0))
             else:
-                ttk.Button(box, text="Choose", command=lambda v=value, dd=d: self.choose(dd, v)).pack(side="right", padx=(16, 0))
+                ttk.Button(box, text="Choose", style=style,
+                           command=lambda v=value, dd=d: self.choose(dd, v)).pack(side="right", padx=(16, 0))
             self.label(box, desc).pack(side="left", fill="x", expand=True)
         if skip:
             skip_box = ttk.LabelFrame(self.body, text="Skipped", padding=12)
@@ -504,8 +595,12 @@ class PerformanceScreen(Screen):
 
     def __init__(self, app):
         super().__init__(app, "Performance test")
-        self.label(self.body, "Enter a secret key, then watch your AES system encrypt each message "
-                              "(AES-ECB). Encryption time depends on your design choices.",
+        self.label(self.body, "Enter a secret key, then watch your AES system encrypt each message.\n" \
+                              "AES will be run in ECB mode. The key you choose will be used as the " \
+                              "secret key for the encryption, and will be padded to be 128-bits. " \
+                              "Key length can be varriable as a security choice, but that is not considered here. " \
+                              "The key you choose will not impact security or performance." \
+                              "However, encryption time does depends on your design choices.",
                    style="Body.TLabel").pack(fill="x")
         row = ttk.Frame(self.body)
         row.pack(anchor="w", pady=12)
@@ -625,6 +720,7 @@ class ResultsScreen(Screen):
     def __init__(self, app):
         super().__init__(app, "Your results")
         g = self.game
+        app.tested.update(g.choices.items())   # remember these for later redesigns
         box = ttk.LabelFrame(self.body, text="Your implementation choices", padding=12)
         box.pack(fill="x")
         for d in DECISIONS:
@@ -654,6 +750,7 @@ class ResultsScreen(Screen):
                    style="Sub.TLabel").pack(fill="x")
         self.add_button("Final assessment", self.app.next_screen, primary=True)
         self.add_button("Try a new design", self.app.redesign)
+        self.add_button("Back to Introduction", self.app.restart)
 
 class AssessmentScreen(Screen):
     def __init__(self, app):
@@ -684,6 +781,7 @@ class App(tk.Tk):
         self.minsize(820, 620)
         self._setup_style()
         self.game = GameState()
+        self.tested = set()   # (decision, value) pairs used in designs already run to the results screen
         self.index, self.current = -1, None
         self.next_screen()
 
@@ -704,6 +802,11 @@ class App(tk.Tk):
         style.configure("TLabelframe.Label", font=(family, 11, "bold"))
         style.configure("TButton", padding=(10, 4))
         style.configure("Accent.TButton", padding=(10, 4), font=(family, 11, "bold"))
+        # "Choose" buttons for options already used in a tested design. The native Windows theme
+        # ignores button background colors, so the text color carries the highlight.
+        style.configure("Tried.TButton", padding=(10, 4), font=(family, 11, "bold"), foreground=TRIED)
+        style.map("Tried.TButton", foreground=[("disabled", "gray55"), ("!disabled", TRIED)])
+        style.configure("Tried.TLabel", foreground=TRIED)
 
     def next_screen(self):
         if self.current is not None:
